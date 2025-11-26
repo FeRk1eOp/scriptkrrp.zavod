@@ -168,6 +168,11 @@ local function safeTweenTeleport(targetCFrame, teleportName)
     return success
 end
 
+-- Обычная ультра-безопасная телепортация (теперь использует safeTweenTeleport)
+local function ultraSafeTeleport(targetCFrame)
+    return safeTweenTeleport(targetCFrame, "Ультра-безопасная телепортация")
+end
+
 -- Функция взятия ковша
 local function equipKovsh()
     local backpack = player:FindFirstChild("Backpack")
@@ -250,36 +255,80 @@ local function executeClearCycle()
     print("✅ Цикл ClearGiver завершен")
 end
 
--- ЦИКЛ 3: Лава и сбор металла
+-- ЦИКЛ 3: Лава и сбор металла (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 local function executeLavaCycle()
     if not equipKovsh() then
         print("❌ Не удалось взять ковш")
         return false
     end
     
-    -- Телепортируемся к Shapes
+    -- Телепортируемся к Shapes - БЕЗОПАСНАЯ ВЕРСИЯ
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
-    local shapesPosition = shapesModel:GetModelCFrame()
+    if not shapesModel then
+        print("❌ Модель Shapes не найдена!")
+        return false
+    end
+    
+    -- Получаем безопасную позицию ДАЛЕКО НАД Shapes
+    local shapesPosition
+    if shapesModel:IsA("Model") then
+        shapesPosition = shapesModel:GetModelCFrame()
+    else
+        shapesPosition = shapesModel.CFrame
+    end
+    
     if not shapesPosition then
         shapesPosition = shapesModel:GetBoundingBox().CFrame
     end
     
-    -- Добавляем безопасную высоту
-    shapesPosition = shapesPosition + Vector3.new(0, 5, 0)
+    -- УВЕЛИЧИВАЕМ ВЫСОТУ ДО 15 И ОТОДВИГАЕМСЯ ОТ КОНВЕЙЕРА
+    shapesPosition = shapesPosition + Vector3.new(2, 15, 2) -- Смещение по X и Z для безопасности
     
-    print("🔄 Безопасная телепортация к Shapes...")
-    if not safeTweenTeleport(shapesPosition, "Shapes") then
-        print("❌ Не удалось телепортироваться к Shapes")
+    print("🔄 СУПЕР-БЕЗОПАСНАЯ телепортация к Shapes...")
+    
+    -- Используем улучшенную телепортацию с дополнительными проверками
+    local teleportSuccess = false
+    for attempt = 1, 3 do -- 3 попытки телепортации
+        print("🔄 Попытка телепортации " .. attempt .. "/3")
+        
+        if safeTweenTeleport(shapesPosition, "Shapes (попытка " .. attempt .. ")") then
+            teleportSuccess = true
+            break
+        else
+            wait(2) -- Ждем между попытками
+        end
+    end
+    
+    if not teleportSuccess then
+        print("❌ Все попытки телепортации к Shapes провалились")
         return false
     end
     
-    -- Даем время на стабилизацию
-    wait(3)
+    -- ДАЕМ БОЛЬШЕ ВРЕМЕНИ НА СТАБИЛИЗАЦИЮ
+    print("⏳ Стабилизируем позицию...")
+    wait(5)
+    
+    -- Плавно опускаемся ближе к Shapes
+    local character = player.Character
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        local humanoidRootPart = character.HumanoidRootPart
+        local targetPosition = shapesModel.Position + Vector3.new(2, 8, 2) -- Безопасная высота над формами
+        
+        print("🪂 Плавное опускание к формам...")
+        for i = 1, 10 do
+            if not autoEnabled then break end
+            local progress = i / 10
+            local currentY = humanoidRootPart.Position.Y * (1 - progress) + targetPosition.Y * progress
+            local currentPos = Vector3.new(targetPosition.X, currentY, targetPosition.Z)
+            humanoidRootPart.CFrame = CFrame.new(currentPos)
+            wait(0.2)
+        end
+    end
     
     -- Проверяем, жив ли игрок
     local character = player.Character
     if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
-        print("💀 Игрок умер, прерываем цикл")
+        print("💀 Игрок умер при телепортации к Shapes")
         return false
     end
     
@@ -388,6 +437,7 @@ local function executeBoxCycle()
     boxPosition = boxPosition + Vector3.new(0, 5, 3)
     
     print("🔄 Безопасная телепортация к боксу...")
+    
     if not safeTweenTeleport(boxPosition, "Бокс") then
         print("❌ Не удалось телепортироваться к боксу")
         return false
@@ -463,17 +513,10 @@ local function startAutoCycle()
         
         -- Телепорт к ClearGiver
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        if not clearGiver then
-            print("❌ ClearGiver не найден!")
-            break
-        end
-        
         local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
         
         print("🔄 Безопасная телепортация к ClearGiver...")
-        if not safeTweenTeleport(clearCFrame, "ClearGiver") then
-            print("❌ Не удалось телепортироваться к ClearGiver, пробуем продолжить...")
-        end
+        safeTweenTeleport(clearCFrame, "ClearGiver")
         
         -- Даем время на стабилизацию
         wait(3)
@@ -516,24 +559,17 @@ local function startAutoCycle()
         if not autoEnabled then break end
         print("⏳ Ждем 20 секунд перед следующим циклом...")
         for i = 1, 20 do
-            if not autoEnabled then break end
+            if не autoEnabled then break end
             wait(1)
         end
         
         -- Телепорт к MetalGiver для следующего цикла
-        if not autoEnabled then break end
+        if не autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        if not metalGiver then
-            print("❌ MetalGiver не найден!")
-            break
-        end
-        
         local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
         
         print("🔄 Безопасная телепортация к MetalGiver...")
-        if not safeTweenTeleport(metalCFrame, "MetalGiver") then
-            print("❌ Не удалось телепортироваться к MetalGiver, пробуем продолжить...")
-        end
+        safeTweenTeleport(metalCFrame, "MetalGiver")
         
         -- Даем время на стабилизацию
         wait(3)
@@ -708,7 +744,7 @@ end)
 print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
 print("🌀  TweenService-телепортация активирована для всех точек")
 print("👻  Noclip автоматически включается на время ожидания после лавы")
-print("🛡️  Улучшенная защита от смерти при телепортации")
+print("🛡️  Улучшенная защита от смерти при телепортации к Shapes")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
