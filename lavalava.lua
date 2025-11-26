@@ -8,8 +8,6 @@ local currentCycle = 0
 local noclipEnabled = false
 local noclipConnection = nil
 
--- Сначала объявляем все функции, которые используются в других функциях
-
 -- Функция для включения/выключения Noclip
 local function toggleNoclip()
     local character = player.Character
@@ -49,188 +47,161 @@ local function toggleNoclip()
     end
 end
 
--- Безопасная система телепортации с проверкой поверхности
-local function safeAdvancedTeleport(targetCFrame)
+-- Ультра-безопасная телепортация с защитой от смерти
+local function ultraSafeTeleport(targetCFrame)
     local character = player.Character
     if not character then return false end
     
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then return false end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoidRootPart or not humanoid then return false end
     
-    print("🛡️ Запускаем безопасную телепортацию...")
+    print("🛡️ Запускаем ультра-безопасную телепортацию...")
     
-    -- Включаем noclip для безопасности
+    -- Сохраняем исходное состояние
     local wasNoclipEnabled = noclipEnabled
+    local originalHealth = humanoid.Health
+    
+    -- Включаем защиту
     if not noclipEnabled then
         toggleNoclip()
     end
     
-    -- Функция для поиска безопасной позиции на поверхности
-    local function findSafePosition(targetPosition)
-        -- Проверяем позицию с помощью raycast
-        local rayOrigin = targetPosition + Vector3.new(0, 50, 0) -- Начинаем сверху
-        local rayDirection = Vector3.new(0, -100, 0) -- Луч вниз
-        local raycastParams = RaycastParams.new()
-        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-        raycastParams.FilterDescendantsInstances = {character}
-        
-        local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-        
-        if rayResult then
-            -- Нашли поверхность, возвращаем позицию над ней
-            return rayResult.Position + Vector3.new(0, 5, 0)
-        else
-            -- Не нашли поверхность, используем оригинальную позицию с безопасной высотой
-            return targetPosition + Vector3.new(0, 10, 0)
-        end
-    end
+    -- Временно увеличиваем здоровье для защиты
+    humanoid.MaxHealth = 1000
+    humanoid.Health = 1000
     
-    -- Метод 1: Безопасное перемещение к целевой позиции
-    local function safeMovementTeleport()
-        print("🚶 Метод 1: Безопасное перемещение...")
-        
-        -- Находим безопасную целевую позицию
-        local safeTargetPosition = findSafePosition(targetCFrame.Position)
-        local safeTargetCFrame = CFrame.new(safeTargetPosition)
+    -- Метод 1: Очень медленное и безопасное перемещение
+    local function superSlowTeleport()
+        print("🐢 Метод 1: Супер-медленное перемещение...")
         
         local startPos = humanoidRootPart.Position
-        local distance = (safeTargetPosition - startPos).Magnitude
-        local steps = math.max(30, distance / 3)
+        local endPos = targetCFrame.Position
+        local distance = (endPos - startPos).Magnitude
         
-        -- Плавное перемещение
+        -- Очень маленькие шаги для больших расстояний
+        local steps = math.max(100, distance)
+        
         for i = 1, steps do
-            if not autoEnabled then break end
+            if not autoEnabled or humanoid.Health <= 0 then break end
             
             local progress = i / steps
-            local currentPos = startPos:Lerp(safeTargetPosition, progress)
+            local currentPos = startPos:Lerp(endPos, progress)
             
-            -- Небольшое смещение для обхода античита
-            local offset = Vector3.new(
-                math.random(-0.3, 0.3),
-                math.random(0, 0.5),
-                math.random(-0.3, 0.3)
-            )
-            
-            humanoidRootPart.CFrame = CFrame.new(currentPos + offset)
-            wait(0.03)
+            -- Очень плавное движение
+            humanoidRootPart.CFrame = CFrame.new(currentPos)
+            wait(0.01) -- Минимальная задержка
         end
         
         -- Финальная позиция
-        humanoidRootPart.CFrame = safeTargetCFrame
+        humanoidRootPart.CFrame = targetCFrame
         return true
     end
     
-    -- Метод 2: Телепорт через промежуточные точки с проверкой поверхности
-    local function surfaceAwareTeleport()
-        print("📍 Метод 2: Телепорт с проверкой поверхности...")
+    -- Метод 2: Телепорт через несколько очень близких точек
+    local function multiStepTeleport()
+        print("📍 Метод 2: Многошаговая телепортация...")
         
         local startPos = humanoidRootPart.Position
-        local safeTargetPosition = findSafePosition(targetCFrame.Position)
+        local endPos = targetCFrame.Position
         
-        -- Создаем безопасные промежуточные точки
-        local points = {}
-        local numPoints = 3
-        
-        for i = 1, numPoints do
-            local progress = i / (numPoints + 1)
-            local basePoint = startPos:Lerp(safeTargetPosition, progress)
+        -- Создаем много близких точек
+        local steps = 20
+        for step = 1, steps do
+            if not autoEnabled or humanoid.Health <= 0 then break end
             
-            -- Делаем каждую точку безопасной
-            local safePoint = findSafePosition(basePoint)
-            table.insert(points, safePoint)
+            local progress = step / steps
+            local currentPos = startPos:Lerp(endPos, progress)
+            
+            humanoidRootPart.CFrame = CFrame.new(currentPos)
+            wait(0.1) -- Небольшая пауза между шагами
         end
         
-        table.insert(points, safeTargetPosition)
-        
-        -- Перемещаемся через точки
-        for _, point in ipairs(points) do
-            if not autoEnabled then break end
-            
-            humanoidRootPart.CFrame = CFrame.new(point)
-            wait(0.2)
-        end
-        
+        humanoidRootPart.CFrame = targetCFrame
         return true
     end
     
-    -- Метод 3: Телепорт с временной платформой
-    local function platformAssistedTeleport()
-        print("🏗️ Метод 3: Телепорт с платформой...")
+    -- Метод 3: Имитация естественного движения
+    local function naturalMovementTeleport()
+        print("🚶 Метод 3: Естественное движение...")
         
-        local safeTargetPosition = findSafePosition(targetCFrame.Position)
+        local startPos = humanoidRootPart.Position
+        local endPos = targetCFrame.Position
+        local distance = (endPos - startPos).Magnitude
         
-        -- Создаем временную платформу в целевой позиции
-        local platform = Instance.new("Part")
-        platform.Name = "SafeTeleportPlatform"
-        platform.Size = Vector3.new(6, 1, 6)
-        platform.Anchored = true
-        platform.CanCollide = true
-        platform.Transparency = 0.7
-        platform.Material = Enum.Material.Plastic
-        platform.BrickColor = BrickColor.new("Bright green")
-        platform.CFrame = CFrame.new(safeTargetPosition - Vector3.new(0, 2.5, 0))
-        platform.Parent = workspace
+        -- Имитируем естественную скорость ходьбы
+        local speed = 16 -- units per second (нормальная скорость в Roblox)
+        local timeNeeded = distance / speed
+        local steps = math.max(30, timeNeeded * 30) -- 30 FPS
         
-        -- Телепортируемся на платформу
-        humanoidRootPart.CFrame = CFrame.new(safeTargetPosition)
-        
-        -- Ждем стабилизации
-        wait(1.5)
-        
-        -- Проверяем, стоит ли игрок на платформе
-        local playerPos = humanoidRootPart.Position
-        local platformPos = platform.Position
-        local distance = (playerPos - platformPos).Magnitude
-        
-        if distance < 10 then
-            print("✅ Игрок безопасно телепортирован")
-        else
-            print("⚠️ Игрок не на платформе, корректируем...")
-            humanoidRootPart.CFrame = CFrame.new(safeTargetPosition)
+        for i = 1, steps do
+            if not autoEnabled or humanoid.Health <= 0 then break end
+            
+            local progress = i / steps
+            local currentPos = startPos:Lerp(endPos, progress)
+            
+            -- Добавляем небольшую случайность для естественности
+            local randomOffset = Vector3.new(
+                math.random(-0.1, 0.1),
+                0,
+                math.random(-0.1, 0.1)
+            )
+            
+            humanoidRootPart.CFrame = CFrame.new(currentPos + randomOffset)
+            wait(0.033) -- ~30 FPS
         end
         
-        -- Медленно удаляем платформу
-        for i = 1, 10 do
-            platform.Transparency = platform.Transparency + 0.03
-            wait(0.1)
-        end
-        platform:Destroy()
-        
+        humanoidRootPart.CFrame = targetCFrame
         return true
     end
     
-    -- Запускаем методы
+    -- Пробуем методы
     local methods = {
-        safeMovementTeleport,
-        surfaceAwareTeleport,
-        platformAssistedTeleport
+        naturalMovementTeleport,
+        superSlowTeleport,
+        multiStepTeleport
     }
     
     local success = false
     
     for attempt = 1, 2 do
+        if not autoEnabled or humanoid.Health <= 0 then break end
+        
         print("\n🔄 Попытка безопасной телепортации " .. attempt .. "/2")
         
         for methodIndex, method in ipairs(methods) do
-            if not autoEnabled then break end
+            if not autoEnabled or humanoid.Health <= 0 then break end
             
             print("🔄 Тестируем метод " .. methodIndex .. "...")
+            
+            -- Проверяем здоровье перед каждым методом
+            if humanoid.Health <= 100 then
+                print("🚨 Низкое здоровье, восстанавливаем...")
+                humanoid.Health = 1000
+            end
+            
             local methodSuccess = pcall(method)
             
             if methodSuccess then
                 -- Проверяем результат
                 wait(1)
-                local finalPosition = humanoidRootPart.Position
                 
-                -- Проверяем, не под картой ли игрок
-                if finalPosition.Y < -100 then
-                    print("❌ Игрок под картой, пробуем другой метод...")
-                    -- Экстренная телепортация на безопасную высоту
-                    humanoidRootPart.CFrame = CFrame.new(targetCFrame.Position.X, 50, targetCFrame.Position.Z)
+                if humanoid.Health > 0 then
+                    local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+                    
+                    if finalDistance <= 15 then
+                        print("✅ Телепортация успешна методом " .. methodIndex)
+                        success = true
+                        break
+                    end
                 else
-                    print("✅ Безопасная телепортация успешна методом " .. methodIndex)
-                    success = true
-                    break
+                    print("💀 Игрок умер во время телепортации")
+                    -- Ждем респавна
+                    wait(5)
+                    if player.Character then
+                        humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+                        humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                    end
                 end
             end
             
@@ -242,27 +213,15 @@ local function safeAdvancedTeleport(targetCFrame)
         end
     end
     
-    -- Восстанавливаем состояние noclip
-    if not wasNoclipEnabled then
-        toggleNoclip()
+    -- Восстанавливаем здоровье
+    if humanoid then
+        humanoid.MaxHealth = 100
+        humanoid.Health = math.min(originalHealth, 100)
     end
     
-    -- Финальная проверка безопасности
-    if success then
-        wait(1)
-        local finalPos = humanoidRootPart.Position
-        
-        -- Если игрок все еще под картой, используем аварийный телепорт
-        if finalPos.Y < -50 then
-            print("🚨 АВАРИЙНЫЙ ТЕЛЕПОРТ! Игрок под картой...")
-            local emergencyPos = Vector3.new(targetCFrame.Position.X, 100, targetCFrame.Position.Z)
-            humanoidRootPart.CFrame = CFrame.new(emergencyPos)
-            wait(1)
-            
-            -- Пытаемся найти поверхность
-            local safePos = findSafePosition(targetCFrame.Position)
-            humanoidRootPart.CFrame = CFrame.new(safePos)
-        end
+    -- Восстанавливаем noclip
+    if not wasNoclipEnabled then
+        toggleNoclip()
     end
     
     return success
@@ -310,13 +269,13 @@ local function executeMetalCycle()
             fireclickdetector(clickDetector)
             print("✅ Клик MetalGiver " .. i)
         end)
-        wait(0.3)
+        wait(0.5)
         
         pcall(function()
             event:FireServer(clickPart)
             print("✅ Ивент place " .. i)
         end)
-        wait(0.3)
+        wait(0.5)
     end
     
     print("✅ Цикл MetalGiver завершен")
@@ -338,13 +297,13 @@ local function executeClearCycle()
             fireclickdetector(clickDetector)
             print("✅ Клик ClearGiver " .. i)
         end)
-        wait(0.3)
+        wait(0.5)
         
         pcall(function()
             event:FireServer(clickPart)
             print("✅ Ивент place Clear " .. i)
         end)
-        wait(0.3)
+        wait(0.5)
     end
     
     print("✅ Цикл ClearGiver завершен")
@@ -357,19 +316,31 @@ local function executeLavaCycle()
         return false
     end
     
-    -- Телепортируемся к Shapes с безопасной позицией
+    -- Телепортируемся к Shapes
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
     local shapesPosition = shapesModel:GetModelCFrame()
     if not shapesPosition then
         shapesPosition = shapesModel:GetBoundingBox().CFrame
     end
     
-    print("🔄 Безопасная телепортация к Shapes...")
-    if not safeAdvancedTeleport(shapesPosition) then
+    -- Добавляем безопасную высоту
+    shapesPosition = shapesPosition + Vector3.new(0, 5, 0)
+    
+    print("🔄 Ультра-безопасная телепортация к Shapes...")
+    if not ultraSafeTeleport(shapesPosition) then
         print("❌ Не удалось телепортироваться к Shapes")
         return false
     end
-    wait(2)
+    
+    -- Даем время на стабилизацию
+    wait(3)
+    
+    -- Проверяем, жив ли игрок
+    local character = player.Character
+    if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        print("💀 Игрок умер, прерываем цикл")
+        return false
+    end
     
     -- Ивенты для лавы
     local giveLavaEvent = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].give_lava
@@ -381,11 +352,17 @@ local function executeLavaCycle()
     for i = 1, 10 do
         if not autoEnabled then break end
         
+        -- Проверяем здоровье перед каждым действием
+        if character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время заливки лавы")
+            return false
+        end
+        
         pcall(function()
             giveLavaEvent:FireServer(lavaGiver)
             print("✅ Взяли лаву " .. i)
         end)
-        wait(0.5)
+        wait(0.7)
         
         pcall(function()
             local shape = shapesModel:FindFirstChild(tostring(i))
@@ -396,15 +373,21 @@ local function executeLavaCycle()
                 print("❌ Форма " .. i .. " не найдена!")
             end
         end)
-        wait(0.5)
+        wait(0.7)
     end
     
     print("✅ Заливка лавы завершена")
     
-    -- Ждем 18 секунд
+    -- Ждем 18 секунд с проверкой здоровья
     print("⏳ Ждем 18 секунд...")
     for i = 1, 18 do
         if not autoEnabled then break end
+        
+        -- Проверяем, не умер ли игрок
+        if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время ожидания")
+            return false
+        end
         wait(1)
     end
     
@@ -412,6 +395,12 @@ local function executeLavaCycle()
     print("💰 Собираем слитки...")
     for i = 1, 10 do
         if not autoEnabled then break end
+        
+        -- Проверка здоровья
+        if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время сбора")
+            return false
+        end
         
         local shape = shapesModel:FindFirstChild(tostring(i))
         if shape then
@@ -421,6 +410,7 @@ local function executeLavaCycle()
                 print("✅ Собрали слиток " .. i)
             end
         end
+        wait(0.2)
     end
     
     print("✅ Слитки собраны")
@@ -429,19 +419,31 @@ end
 
 -- ЦИКЛ 4: Загрузка в бокс
 local function executeBoxCycle()
-    -- Телепортируемся к боксу с безопасной позицией
+    -- Телепортируемся к боксу
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
     local boxPosition = box:GetModelCFrame()
     if not boxPosition then
         boxPosition = box:GetBoundingBox().CFrame
     end
     
-    print("🔄 Безопасная телепортация к боксу...")
-    if not safeAdvancedTeleport(boxPosition) then
+    -- Добавляем безопасную высоту
+    boxPosition = boxPosition + Vector3.new(0, 5, 0)
+    
+    print("🔄 Ультра-безопасная телепортация к боксу...")
+    if not ultraSafeTeleport(boxPosition) then
         print("❌ Не удалось телепортироваться к боксу")
         return false
     end
-    wait(2)
+    
+    -- Даем время на стабилизацию
+    wait(3)
+    
+    -- Проверяем, жив ли игрок
+    local character = player.Character
+    if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        print("💀 Игрок умер, прерываем цикл")
+        return false
+    end
     
     -- Загружаем металл в бокс
     local Event = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].place_metal
@@ -452,11 +454,17 @@ local function executeBoxCycle()
     for i = 1, 10 do
         if not autoEnabled then break end
         
+        -- Проверка здоровья
+        if character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время загрузки")
+            return false
+        end
+        
         pcall(function()
             Event:FireServer(boxPart)
             print("✅ Загрузили слиток " .. i)
         end)
-        wait(0.3)
+        wait(0.5)
     end
     
     print("✅ Загрузка в бокс завершена")
@@ -473,11 +481,21 @@ local function startAutoCycle()
     autoEnabled = true
     currentCycle = 0
     
-    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ!")
+    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С УЛЬТРА-БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ!")
     
     while autoEnabled do
         currentCycle = currentCycle + 1
         print("\n🎯 ЗАПУСК ЦИКЛА " .. currentCycle .. " ================")
+        
+        -- Проверяем, жив ли игрок перед началом цикла
+        if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок мертв, ждем респавна...")
+            wait(5)
+            if not player.Character then
+                print("❌ Персонаж не респавнится, прерываем цикл")
+                break
+            end
+        end
         
         -- ЦИКЛ 1: MetalGiver
         if not autoEnabled then break end
@@ -487,10 +505,13 @@ local function startAutoCycle()
         
         -- Телепорт к ClearGiver
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        local clearCFrame = clearGiver.CFrame
+        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
         
-        print("🔄 Безопасная телепортация к ClearGiver...")
-        safeAdvancedTeleport(clearCFrame)
+        print("🔄 Ультра-безопасная телепортация к ClearGiver...")
+        ultraSafeTeleport(clearCFrame)
+        
+        -- Даем время на стабилизацию
+        wait(3)
         
         print("⏳ Ждем 10 секунд...")
         for i = 1, 10 do
@@ -537,11 +558,13 @@ local function startAutoCycle()
         -- Телепорт к MetalGiver для следующего цикла
         if not autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        local metalCFrame = metalGiver.CFrame
+        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
         
-        print("🔄 Безопасная телепортация к MetalGiver...")
-        safeAdvancedTeleport(metalCFrame)
-        wait(2)
+        print("🔄 Ультра-безопасная телепортация к MetalGiver...")
+        ultraSafeTeleport(metalCFrame)
+        
+        -- Даем время на стабилизацию
+        wait(3)
         
         print("🎉 ЦИКЛ " .. currentCycle .. " ЗАВЕРШЕН! ================")
     end
@@ -710,8 +733,8 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
-print("🛡️  Система защиты от падения под карту активирована")
+print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С УЛЬТРА-БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
+print("🛡️  Максимальная защита от смерти активирована")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
