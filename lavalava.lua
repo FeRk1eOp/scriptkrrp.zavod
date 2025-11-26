@@ -8,232 +8,167 @@ local currentCycle = 0
 local noclipEnabled = false
 local noclipConnection = nil
 
--- Улучшенная система телепортации с обходом античита
-local function advancedTeleport(targetCFrame)
+-- Безопасная система телепортации с проверкой поверхности
+local function safeAdvancedTeleport(targetCFrame)
     local character = player.Character
     if not character then return false end
     
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return false end
     
-    print("🎯 Запускаем усовершенствованную телепортацию...")
+    print("🛡️ Запускаем безопасную телепортацию...")
     
-    -- Метод 1: Медленное движение с имитацией ходьбы
-    local function slowMovementTeleport()
-        print("🚶 Метод 1: Медленное движение...")
-        local startPos = humanoidRootPart.Position
-        local endPos = targetCFrame.Position
-        local distance = (endPos - startPos).Magnitude
-        local steps = math.max(50, distance / 2) -- Больше шагов для больших расстояний
+    -- Включаем noclip для безопасности
+    local wasNoclipEnabled = noclipEnabled
+    if not noclipEnabled then
+        toggleNoclip()
+    end
+    
+    -- Функция для поиска безопасной позиции на поверхности
+    local function findSafePosition(targetPosition)
+        -- Проверяем позицию с помощью raycast
+        local rayOrigin = targetPosition + Vector3.new(0, 50, 0) -- Начинаем сверху
+        local rayDirection = Vector3.new(0, -100, 0) -- Луч вниз
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstances = {character}
         
+        local rayResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        
+        if rayResult then
+            -- Нашли поверхность, возвращаем позицию над ней
+            return rayResult.Position + Vector3.new(0, 5, 0)
+        else
+            -- Не нашли поверхность, используем оригинальную позицию с безопасной высотой
+            return targetPosition + Vector3.new(0, 10, 0)
+        end
+    end
+    
+    -- Метод 1: Безопасное перемещение к целевой позиции
+    local function safeMovementTeleport()
+        print("🚶 Метод 1: Безопасное перемещение...")
+        
+        -- Находим безопасную целевую позицию
+        local safeTargetPosition = findSafePosition(targetCFrame.Position)
+        local safeTargetCFrame = CFrame.new(safeTargetPosition)
+        
+        local startPos = humanoidRootPart.Position
+        local distance = (safeTargetPosition - startPos).Magnitude
+        local steps = math.max(30, distance / 3)
+        
+        -- Плавное перемещение
         for i = 1, steps do
             if not autoEnabled then break end
             
             local progress = i / steps
-            local currentPos = startPos:Lerp(endPos, progress)
+            local currentPos = startPos:Lerp(safeTargetPosition, progress)
             
-            -- Добавляем небольшую случайность для имитации естественного движения
-            local randomOffset = Vector3.new(
-                math.random(-0.5, 0.5),
-                math.random(-0.1, 0.1),
-                math.random(-0.5, 0.5)
+            -- Небольшое смещение для обхода античита
+            local offset = Vector3.new(
+                math.random(-0.3, 0.3),
+                math.random(0, 0.5),
+                math.random(-0.3, 0.3)
             )
             
-            humanoidRootPart.CFrame = CFrame.new(currentPos + randomOffset)
-            wait(0.03) -- Очень маленькая задержка
+            humanoidRootPart.CFrame = CFrame.new(currentPos + offset)
+            wait(0.03)
         end
         
-        humanoidRootPart.CFrame = targetCFrame
+        -- Финальная позиция
+        humanoidRootPart.CFrame = safeTargetCFrame
         return true
     end
     
-    -- Метод 2: Телепорт через несколько промежуточных точек
-    local function multiPointTeleport()
-        print("📍 Метод 2: Многоточечная телепортация...")
-        local startPos = humanoidRootPart.Position
-        local endPos = targetCFrame.Position
+    -- Метод 2: Телепорт через промежуточные точки с проверкой поверхности
+    local function surfaceAwareTeleport()
+        print("📍 Метод 2: Телепорт с проверкой поверхности...")
         
-        -- Создаем 3-4 случайные промежуточные точки
+        local startPos = humanoidRootPart.Position
+        local safeTargetPosition = findSafePosition(targetCFrame.Position)
+        
+        -- Создаем безопасные промежуточные точки
         local points = {}
-        local numPoints = 4
+        local numPoints = 3
         
         for i = 1, numPoints do
             local progress = i / (numPoints + 1)
-            local basePoint = startPos:Lerp(endPos, progress)
+            local basePoint = startPos:Lerp(safeTargetPosition, progress)
             
-            -- Добавляем случайное смещение
-            local randomOffset = Vector3.new(
-                math.random(-10, 10),
-                math.random(5, 15),
-                math.random(-10, 10)
-            )
-            
-            table.insert(points, basePoint + randomOffset)
+            -- Делаем каждую точку безопасной
+            local safePoint = findSafePosition(basePoint)
+            table.insert(points, safePoint)
         end
         
-        table.insert(points, endPos) -- Конечная точка
+        table.insert(points, safeTargetPosition)
         
-        -- Последовательно телепортируемся через все точки
+        -- Перемещаемся через точки
         for _, point in ipairs(points) do
             if not autoEnabled then break end
             
             humanoidRootPart.CFrame = CFrame.new(point)
-            wait(0.1) -- Короткая пауза между точками
+            wait(0.2)
         end
         
         return true
     end
     
-    -- Метод 3: Физическое перемещение через BodyMover
-    local function physicsTeleport()
-        print("⚡ Метод 3: Физическое перемещение...")
-        local bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Velocity = (targetCFrame.Position - humanoidRootPart.Position).Unit * 50
-        bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
-        bodyVelocity.Parent = humanoidRootPart
+    -- Метод 3: Телепорт с временной платформой
+    local function platformAssistedTeleport()
+        print("🏗️ Метод 3: Телепорт с платформой...")
         
-        -- Ждем достижения цели или таймаута
-        local startTime = tick()
-        while (humanoidRootPart.Position - targetCFrame.Position).Magnitude > 5 do
-            if not autoEnabled or (tick() - startTime) > 10 then
-                break
-            end
-            wait(0.1)
+        local safeTargetPosition = findSafePosition(targetCFrame.Position)
+        
+        -- Создаем временную платформу в целевой позиции
+        local platform = Instance.new("Part")
+        platform.Name = "SafeTeleportPlatform"
+        platform.Size = Vector3.new(6, 1, 6)
+        platform.Anchored = true
+        platform.CanCollide = true
+        platform.Transparency = 0.7
+        platform.Material = Enum.Material.Plastic
+        platform.BrickColor = BrickColor.new("Bright green")
+        platform.CFrame = CFrame.new(safeTargetPosition - Vector3.new(0, 2.5, 0))
+        platform.Parent = workspace
+        
+        -- Телепортируемся на платформу
+        humanoidRootPart.CFrame = CFrame.new(safeTargetPosition)
+        
+        -- Ждем стабилизации
+        wait(1.5)
+        
+        -- Проверяем, стоит ли игрок на платформе
+        local playerPos = humanoidRootPart.Position
+        local platformPos = platform.Position
+        local distance = (playerPos - platformPos).Magnitude
+        
+        if distance < 10 then
+            print("✅ Игрок безопасно телепортирован")
+        else
+            print("⚠️ Игрок не на платформе, корректируем...")
+            humanoidRootPart.CFrame = CFrame.new(safeTargetPosition)
         end
         
-        bodyVelocity:Destroy()
-        return true
-    end
-    
-    -- Метод 4: Телепорт через временный портал (объект)
-    local function portalTeleport()
-        print("🌀 Метод 4: Портал...")
-        
-        -- Создаем "портал" в текущей позиции
-        local startPortal = Instance.new("Part")
-        startPortal.Name = "TeleportPortal"
-        startPortal.Size = Vector3.new(5, 8, 1)
-        startPortal.Anchored = true
-        startPortal.CanCollide = false
-        startPortal.Transparency = 0.7
-        startPortal.Material = Enum.Material.Neon
-        startPortal.BrickColor = BrickColor.new("Bright blue")
-        startPortal.CFrame = humanoidRootPart.CFrame * CFrame.new(0, 0, -3)
-        startPortal.Parent = workspace
-        
-        -- Создаем "портал" в целевой позиции
-        local endPortal = Instance.new("Part")
-        endPortal.Name = "TeleportPortal"
-        endPortal.Size = Vector3.new(5, 8, 1)
-        endPortal.Anchored = true
-        endPortal.CanCollide = false
-        endPortal.Transparency = 0.7
-        endPortal.Material = Enum.Material.Neon
-        endPortal.BrickColor = BrickColor.new("Bright blue")
-        endPortal.CFrame = targetCFrame * CFrame.new(0, 0, -3)
-        endPortal.Parent = workspace
-        
-        -- Анимация "входа" в портал
+        -- Медленно удаляем платформу
         for i = 1, 10 do
-            humanoidRootPart.CFrame = startPortal.CFrame * CFrame.new(0, 0, -0.5 * i)
-            wait(0.05)
-        end
-        
-        -- Мгновенная телепортация
-        humanoidRootPart.CFrame = endPortal.CFrame * CFrame.new(0, 0, 3)
-        
-        -- Анимация "выхода" из портала
-        for i = 1, 5 do
-            humanoidRootPart.CFrame = endPortal.CFrame * CFrame.new(0, 0, 0.5 * i)
-            wait(0.05)
-        end
-        
-        -- Удаляем порталы
-        wait(0.5)
-        startPortal:Destroy()
-        endPortal:Destroy()
-        
-        return true
-    end
-    
-    -- Метод 5: Использование VehicleSeat с улучшениями
-    local function vehicleSeatTeleport()
-        print("💺 Метод 5: Улучшенный VehicleSeat...")
-        
-        -- Создаем сиденье в целевой позиции
-        local seat = Instance.new("VehicleSeat")
-        seat.CFrame = targetCFrame + Vector3.new(0, 3, 0)
-        seat.Anchored = true
-        seat.CanCollide = false
-        seat.Transparency = 1
-        seat.Parent = workspace
-        
-        -- Сажаем игрока на сиденье
-        humanoidRootPart.CFrame = seat.CFrame
-        
-        -- Ждем пока игрок сядет
-        wait(1)
-        
-        -- Медленно перемещаем сиденье к финальной позиции
-        local steps = 20
-        local startPos = seat.Position
-        local endPos = targetCFrame.Position
-        
-        for i = 1, steps do
-            local progress = i / steps
-            local currentPos = startPos:Lerp(endPos, progress)
-            seat.CFrame = CFrame.new(currentPos)
-            wait(0.05)
-        end
-        
-        -- Поднимаем игрока
-        seat:Destroy()
-        humanoidRootPart.CFrame = targetCFrame
-        
-        return true
-    end
-    
-    -- Метод 6: Имитация падения с неба
-    local function fallingTeleport()
-        print("🌠 Метод 6: Падение с неба...")
-        
-        -- Телепортируем высоко над целью
-        local highPosition = targetCFrame.Position + Vector3.new(0, 50, 0)
-        humanoidRootPart.CFrame = CFrame.new(highPosition)
-        wait(0.5)
-        
-        -- Медленно опускаемся
-        local steps = 25
-        for i = 1, steps do
-            local height = 50 - (i * 2)
-            humanoidRootPart.CFrame = CFrame.new(targetCFrame.Position + Vector3.new(0, height, 0))
+            platform.Transparency = platform.Transparency + 0.03
             wait(0.1)
         end
+        platform:Destroy()
         
-        humanoidRootPart.CFrame = targetCFrame
         return true
     end
     
-    -- Запускаем все методы по порядку
+    -- Запускаем методы
     local methods = {
-        slowMovementTeleport,
-        multiPointTeleport, 
-        physicsTeleport,
-        portalTeleport,
-        vehicleSeatTeleport,
-        fallingTeleport
+        safeMovementTeleport,
+        surfaceAwareTeleport,
+        platformAssistedTeleport
     }
-    
-    -- Перемешиваем методы для большей эффективности
-    for i = #methods, 2, -1 do
-        local j = math.random(1, i)
-        methods[i], methods[j] = methods[j], methods[i]
-    end
     
     local success = false
     
-    for attempt = 1, 2 do  -- 2 попытки
-        print("\n🔄 Попытка телепортации " .. attempt .. "/2")
+    for attempt = 1, 2 do
+        print("\n🔄 Попытка безопасной телепортации " .. attempt .. "/2")
         
         for methodIndex, method in ipairs(methods) do
             if not autoEnabled then break end
@@ -243,18 +178,19 @@ local function advancedTeleport(targetCFrame)
             
             if methodSuccess then
                 -- Проверяем результат
-                wait(1)  -- Ждем возможного отката античита
-                local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+                wait(1)
+                local finalPosition = humanoidRootPart.Position
                 
-                if finalDistance <= 10 then
-                    print("✅ Телепортация успешна методом " .. methodIndex)
+                -- Проверяем, не под картой ли игрок
+                if finalPosition.Y < -100 then
+                    print("❌ Игрок под картой, пробуем другой метод...")
+                    -- Экстренная телепортация на безопасную высоту
+                    humanoidRootPart.CFrame = CFrame.new(targetCFrame.Position.X, 50, targetCFrame.Position.Z)
+                else
+                    print("✅ Безопасная телепортация успешна методом " .. methodIndex)
                     success = true
                     break
-                else
-                    print("⚠️ Метод " .. methodIndex .. " не достиг цели, расстояние: " .. math.floor(finalDistance))
                 end
-            else
-                print("❌ Метод " .. methodIndex .. " вызвал ошибку")
             end
             
             wait(0.5)
@@ -263,26 +199,33 @@ local function advancedTeleport(targetCFrame)
         if success then
             break
         end
-        
-        print("🔄 Пробуем другую комбинацию методов...")
-        wait(2)
     end
     
-    -- Финальная проверка и корректировка
+    -- Восстанавливаем состояние noclip
+    if not wasNoclipEnabled then
+        toggleNoclip()
+    end
+    
+    -- Финальная проверка безопасности
     if success then
-        wait(2)  -- Ждем возможного отката
-        local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+        wait(1)
+        local finalPos = humanoidRootPart.Position
         
-        if finalDistance > 5 then
-            print("🔄 Финальная корректировка позиции...")
-            humanoidRootPart.CFrame = targetCFrame
+        -- Если игрок все еще под картой, используем аварийный телепорт
+        if finalPos.Y < -50 then
+            print("🚨 АВАРИЙНЫЙ ТЕЛЕПОРТ! Игрок под картой...")
+            local emergencyPos = Vector3.new(targetCFrame.Position.X, 100, targetCFrame.Position.Z)
+            humanoidRootPart.CFrame = CFrame.new(emergencyPos)
+            wait(1)
+            
+            -- Пытаемся найти поверхность
+            local safePos = findSafePosition(targetCFrame.Position)
+            humanoidRootPart.CFrame = CFrame.new(safePos)
         end
     end
     
     return success
 end
-
--- Остальной код остается таким же, но используем advancedTeleport вместо safeTeleport
 
 -- Функция для включения/выключения Noclip
 local function toggleNoclip()
@@ -412,16 +355,15 @@ local function executeLavaCycle()
         return false
     end
     
-    -- Телепортируемся к Shapes
+    -- Телепортируемся к Shapes с безопасной позицией
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
-    local shapesPosition = shapesModel:GetModelCFrame()
-    if not shapesPosition then
-        shapesPosition = shapesModel:GetBoundingBox().CFrame
+    local shapesCFrame = shapesModel:GetModelCFrame()
+    if not shapesCFrame then
+        shapesCFrame = shapesModel:GetBoundingBox().CFrame
     end
-    local shapesCFrame = shapesPosition + Vector3.new(0, 5, 0)
     
-    print("🔄 Усовершенствованная телепортация к Shapes...")
-    if not advancedTeleport(shapesCFrame) then
+    print("🔄 Безопасная телепортация к Shapes...")
+    if not safeAdvancedTeleport(shapesCFrame) then
         print("❌ Не удалось телепортироваться к Shapes")
         return false
     end
@@ -485,16 +427,15 @@ end
 
 -- ЦИКЛ 4: Загрузка в бокс
 local function executeBoxCycle()
-    -- Телепортируемся к боксу
+    -- Телепортируемся к боксу с безопасной позицией
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
-    local boxPosition = box:GetModelCFrame()
-    if not boxPosition then
-        boxPosition = box:GetBoundingBox().CFrame
+    local boxCFrame = box:GetModelCFrame()
+    if not boxCFrame then
+        boxCFrame = box:GetBoundingBox().CFrame
     end
-    local boxCFrame = boxPosition + Vector3.new(0, 5, 0)
     
-    print("🔄 Усовершенствованная телепортация к боксу...")
-    if not advancedTeleport(boxCFrame) then
+    print("🔄 Безопасная телепортация к боксу...")
+    if not safeAdvancedTeleport(boxCFrame) then
         print("❌ Не удалось телепортироваться к боксу")
         return false
     end
@@ -530,12 +471,7 @@ local function startAutoCycle()
     autoEnabled = true
     currentCycle = 0
     
-    -- Включаем noclip для всего цикла
-    if not noclipEnabled then
-        toggleNoclip()
-    end
-    
-    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С УСОВЕРШЕНСТВОВАННОЙ ТЕЛЕПОРТАЦИЕЙ!")
+    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ!")
     
     while autoEnabled do
         currentCycle = currentCycle + 1
@@ -549,10 +485,10 @@ local function startAutoCycle()
         
         -- Телепорт к ClearGiver
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
+        local clearCFrame = clearGiver.CFrame
         
-        print("🔄 Усовершенствованная телепортация к ClearGiver...")
-        advancedTeleport(clearCFrame)
+        print("🔄 Безопасная телепортация к ClearGiver...")
+        safeAdvancedTeleport(clearCFrame)
         
         print("⏳ Ждем 10 секунд...")
         for i = 1, 10 do
@@ -599,10 +535,10 @@ local function startAutoCycle()
         -- Телепорт к MetalGiver для следующего цикла
         if not autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
+        local metalCFrame = metalGiver.CFrame
         
-        print("🔄 Усовершенствованная телепортация к MetalGiver...")
-        advancedTeleport(metalCFrame)
+        print("🔄 Безопасная телепортация к MetalGiver...")
+        safeAdvancedTeleport(metalCFrame)
         wait(2)
         
         print("🎉 ЦИКЛ " .. currentCycle .. " ЗАВЕРШЕН! ================")
@@ -626,7 +562,7 @@ local function stopAutoCycle()
     end
 end
 
--- Создаем GUI для управления (остается без изменений)
+-- Создаем GUI для управления
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AutoFactoryGUI"
 screenGui.Parent = playerGui
@@ -772,9 +708,9 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С УСОВЕРШЕНСТВОВАННОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
-print("🎯 6 методов обхода анти-телепорта активированы")
+print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
+print("🛡️  Система защиты от падения под карту активирована")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
-print("   👻 Noclip будет автоматически включен для лучшего обхода")
+print("   👻 Noclip будет временно включаться только для телепортации")
