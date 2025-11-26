@@ -68,8 +68,8 @@ local function ultraSafeTeleport(targetCFrame)
     end
     
     -- Временно увеличиваем здоровье для защиты
-    humanoid.MaxHealth = 1000
-    humanoid.Health = 1000
+    humanoid.MaxHealth = 10000
+    humanoid.Health = 10000
     
     -- Метод 1: Очень медленное и безопасное перемещение
     local function superSlowTeleport()
@@ -80,7 +80,7 @@ local function ultraSafeTeleport(targetCFrame)
         local distance = (endPos - startPos).Magnitude
         
         -- Очень маленькие шаги для больших расстояний
-        local steps = math.max(100, distance)
+        local steps = math.max(100, distance * 2)
         
         for i = 1, steps do
             if not autoEnabled or humanoid.Health <= 0 then break end
@@ -106,7 +106,7 @@ local function ultraSafeTeleport(targetCFrame)
         local endPos = targetCFrame.Position
         
         -- Создаем много близких точек
-        local steps = 20
+        local steps = 50
         for step = 1, steps do
             if not autoEnabled or humanoid.Health <= 0 then break end
             
@@ -114,7 +114,7 @@ local function ultraSafeTeleport(targetCFrame)
             local currentPos = startPos:Lerp(endPos, progress)
             
             humanoidRootPart.CFrame = CFrame.new(currentPos)
-            wait(0.1) -- Небольшая пауза между шагами
+            wait(0.05) -- Небольшая пауза между шагами
         end
         
         humanoidRootPart.CFrame = targetCFrame
@@ -155,12 +155,56 @@ local function ultraSafeTeleport(targetCFrame)
         return true
     end
     
-    -- Пробуем методы
-    local methods = {
-        naturalMovementTeleport,
-        superSlowTeleport,
-        multiStepTeleport
-    }
+    -- Метод 4: Особо безопасный для бокса
+    local function extraSafeBoxTeleport()
+        print("📦 Метод 4: Особо безопасный для бокса...")
+        
+        local startPos = humanoidRootPart.Position
+        local endPos = targetCFrame.Position
+        
+        -- Делим путь на очень маленькие сегменты
+        local segments = 4
+        for seg = 1, segments do
+            if not autoEnabled or humanoid.Health <= 0 then break end
+            
+            local progress = seg / segments
+            local segmentEndPos = startPos:Lerp(endPos, progress)
+            
+            -- Медленно движемся к каждой точке
+            local segmentSteps = 25
+            for i = 1, segmentSteps do
+                if not autoEnabled or humanoid.Health <= 0 then break end
+                
+                local segProgress = i / segmentSteps
+                local currentPos = startPos:Lerp(segmentEndPos, segProgress)
+                
+                humanoidRootPart.CFrame = CFrame.new(currentPos)
+                wait(0.03)
+            end
+            
+            startPos = segmentEndPos
+        end
+        
+        humanoidRootPart.CFrame = targetCFrame
+        return true
+    end
+    
+    -- Пробуем методы (для бокса используем особый метод)
+    local methods = {}
+    if targetCFrame.Position.Y < 50 then -- Если это низкая позиция (возможно бокс)
+        methods = {
+            extraSafeBoxTeleport,
+            superSlowTeleport,
+            naturalMovementTeleport,
+            multiStepTeleport
+        }
+    else
+        methods = {
+            naturalMovementTeleport,
+            superSlowTeleport,
+            multiStepTeleport
+        }
+    end
     
     local success = false
     
@@ -177,7 +221,7 @@ local function ultraSafeTeleport(targetCFrame)
             -- Проверяем здоровье перед каждым методом
             if humanoid.Health <= 100 then
                 print("🚨 Низкое здоровье, восстанавливаем...")
-                humanoid.Health = 1000
+                humanoid.Health = 10000
             end
             
             local methodSuccess = pcall(method)
@@ -378,17 +422,34 @@ local function executeLavaCycle()
     
     print("✅ Заливка лавы завершена")
     
+    -- ВКЛЮЧАЕМ NOCLIP НА ВРЕМЯ ОЖИДАНИЯ 18 СЕКУНД
+    local wasNoclipBeforeWait = noclipEnabled
+    if not noclipEnabled then
+        toggleNoclip()
+        print("👻 Noclip включен на время ожидания")
+    end
+    
     -- Ждем 18 секунд с проверкой здоровья
-    print("⏳ Ждем 18 секунд...")
+    print("⏳ Ждем 18 секунд с включенным noclip...")
     for i = 1, 18 do
         if not autoEnabled then break end
         
         -- Проверяем, не умер ли игрок
         if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
             print("💀 Игрок умер во время ожидания")
+            -- Выключаем noclip перед выходом
+            if not wasNoclipBeforeWait then
+                toggleNoclip()
+            end
             return false
         end
         wait(1)
+    end
+    
+    -- ВЫКЛЮЧАЕМ NOCLIP ПОСЛЕ ОЖИДАНИЯ (если он был выключен до этого)
+    if not wasNoclipBeforeWait then
+        toggleNoclip()
+        print("👻 Noclip выключен после ожидания")
     end
     
     -- Собираем слитки
@@ -417,9 +478,9 @@ local function executeLavaCycle()
     return true
 end
 
--- ЦИКЛ 4: Загрузка в бокс
+-- ЦИКЛ 4: Загрузка в бокс (ОСОБО БЕЗОПАСНАЯ ВЕРСИЯ)
 local function executeBoxCycle()
-    -- Телепортируемся к боксу
+    -- Телепортируемся к боксу с ОСОБОЙ осторожностью
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
     local boxPosition = box:GetModelCFrame()
     if not boxPosition then
@@ -427,21 +488,36 @@ local function executeBoxCycle()
     end
     
     -- Добавляем безопасную высоту
-    boxPosition = boxPosition + Vector3.new(0, 5, 0)
+    boxPosition = boxPosition + Vector3.new(0, 10, 0) -- Большая высота для бокса
     
-    print("🔄 Ультра-безопасная телепортация к боксу...")
+    print("🔄 ОСОБО БЕЗОПАСНАЯ телепортация к боксу...")
+    
+    -- Включаем noclip для телепортации к боксу
+    local wasNoclipBeforeBox = noclipEnabled
+    if not noclipEnabled then
+        toggleNoclip()
+    end
+    
     if not ultraSafeTeleport(boxPosition) then
         print("❌ Не удалось телепортироваться к боксу")
+        -- Восстанавливаем noclip
+        if not wasNoclipBeforeBox then
+            toggleNoclip()
+        end
         return false
     end
     
-    -- Даем время на стабилизацию
-    wait(3)
+    -- Даем БОЛЬШЕ времени на стабилизацию для бокса
+    wait(5)
     
     -- Проверяем, жив ли игрок
     local character = player.Character
     if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
-        print("💀 Игрок умер, прерываем цикл")
+        print("💀 Игрок умер при телепортации к боксу")
+        -- Восстанавливаем noclip
+        if not wasNoclipBeforeBox then
+            toggleNoclip()
+        end
         return false
     end
     
@@ -457,6 +533,10 @@ local function executeBoxCycle()
         -- Проверка здоровья
         if character:FindFirstChildOfClass("Humanoid").Health <= 0 then
             print("💀 Игрок умер во время загрузки")
+            -- Восстанавливаем noclip
+            if not wasNoclipBeforeBox then
+                toggleNoclip()
+            end
             return false
         end
         
@@ -465,6 +545,11 @@ local function executeBoxCycle()
             print("✅ Загрузили слиток " .. i)
         end)
         wait(0.5)
+    end
+    
+    -- Восстанавливаем noclip после работы с боксом
+    if not wasNoclipBeforeBox then
+        toggleNoclip()
     end
     
     print("✅ Загрузка в бокс завершена")
@@ -481,7 +566,7 @@ local function startAutoCycle()
     autoEnabled = true
     currentCycle = 0
     
-    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С УЛЬТРА-БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ!")
+    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С УЛУЧШЕННОЙ БЕЗОПАСНОСТЬЮ!")
     
     while autoEnabled do
         currentCycle = currentCycle + 1
@@ -593,7 +678,7 @@ screenGui.Name = "AutoFactoryGUI"
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 200)
+mainFrame.Size = UDim2.new(0, 320, 0, 220)
 mainFrame.Position = UDim2.new(0, 50, 0, 50)
 mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 mainFrame.BorderSizePixel = 0
@@ -733,8 +818,9 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С УЛЬТРА-БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
-print("🛡️  Максимальная защита от смерти активирована")
+print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С УЛУЧШЕННОЙ БЕЗОПАСНОСТЬЮ ЗАГРУЖЕН!")
+print("🛡️  Улучшенная защита от смерти при телепортации к боксу")
+print("👻  Noclip автоматически включается на время ожидания после лавы")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
