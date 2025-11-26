@@ -8,6 +8,47 @@ local currentCycle = 0
 local noclipEnabled = false
 local noclipConnection = nil
 
+-- Сначала объявляем все функции, которые используются в других функциях
+
+-- Функция для включения/выключения Noclip
+local function toggleNoclip()
+    local character = player.Character
+    if not character then return end
+    
+    noclipEnabled = not noclipEnabled
+    
+    if noclipEnabled then
+        if noclipConnection then
+            noclipConnection:Disconnect()
+        end
+        
+        noclipConnection = game:GetService("RunService").Stepped:Connect(function()
+            if character and noclipEnabled then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+        print("✅ Noclip включен")
+    else
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+        print("❌ Noclip выключен")
+    end
+end
+
 -- Безопасная система телепортации с проверкой поверхности
 local function safeAdvancedTeleport(targetCFrame)
     local character = player.Character
@@ -227,45 +268,6 @@ local function safeAdvancedTeleport(targetCFrame)
     return success
 end
 
--- Функция для включения/выключения Noclip
-local function toggleNoclip()
-    local character = player.Character
-    if not character then return end
-    
-    noclipEnabled = not noclipEnabled
-    
-    if noclipEnabled then
-        if noclipConnection then
-            noclipConnection:Disconnect()
-        end
-        
-        noclipConnection = game:GetService("RunService").Stepped:Connect(function()
-            if character and noclipEnabled then
-                for _, part in pairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-        print("✅ Noclip включен")
-    else
-        if noclipConnection then
-            noclipConnection:Disconnect()
-            noclipConnection = nil
-        end
-        
-        if character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = true
-                end
-            end
-        end
-        print("❌ Noclip выключен")
-    end
-end
-
 -- Функция взятия ковша
 local function equipKovsh()
     local backpack = player:FindFirstChild("Backpack")
@@ -357,13 +359,13 @@ local function executeLavaCycle()
     
     -- Телепортируемся к Shapes с безопасной позицией
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
-    local shapesCFrame = shapesModel:GetModelCFrame()
-    if not shapesCFrame then
-        shapesCFrame = shapesModel:GetBoundingBox().CFrame
+    local shapesPosition = shapesModel:GetModelCFrame()
+    if not shapesPosition then
+        shapesPosition = shapesModel:GetBoundingBox().CFrame
     end
     
     print("🔄 Безопасная телепортация к Shapes...")
-    if not safeAdvancedTeleport(shapesCFrame) then
+    if not safeAdvancedTeleport(shapesPosition) then
         print("❌ Не удалось телепортироваться к Shapes")
         return false
     end
@@ -429,13 +431,13 @@ end
 local function executeBoxCycle()
     -- Телепортируемся к боксу с безопасной позицией
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
-    local boxCFrame = box:GetModelCFrame()
-    if not boxCFrame then
-        boxCFrame = box:GetBoundingBox().CFrame
+    local boxPosition = box:GetModelCFrame()
+    if not boxPosition then
+        boxPosition = box:GetBoundingBox().CFrame
     end
     
     print("🔄 Безопасная телепортация к боксу...")
-    if not safeAdvancedTeleport(boxCFrame) then
+    if not safeAdvancedTeleport(boxPosition) then
         print("❌ Не удалось телепортироваться к боксу")
         return false
     end
@@ -713,4 +715,3 @@ print("🛡️  Система защиты от падения под карт�
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
-print("   👻 Noclip будет временно включаться только для телепортации")
