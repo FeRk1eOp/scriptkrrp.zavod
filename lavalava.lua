@@ -8,6 +8,65 @@ local currentCycle = 0
 local noclipEnabled = false
 local noclipConnection = nil
 
+-- Защита от урона
+local originalGravity = 196.2
+local damageProtectionEnabled = false
+
+-- Функция для включения/выключения защиты от урона
+local function toggleDamageProtection(enable)
+    local character = player.Character
+    if not character then return end
+    
+    if enable then
+        -- Включаем защиту
+        damageProtectionEnabled = true
+        
+        -- Сохраняем оригинальные значения
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            -- Делаем персонажа неуязвимым
+            humanoid.MaxHealth = math.huge
+            humanoid.Health = math.huge
+        end
+        
+        -- Убираем гравитацию
+        workspace.Gravity = 0
+        
+        -- Убираем коллизии всех частей персонажа
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+                part.Velocity = Vector3.new(0, 0, 0)
+                part.RotVelocity = Vector3.new(0, 0, 0)
+            end
+        end
+        
+        print("🛡️ Защита от урона включена")
+    else
+        -- Выключаем защиту
+        damageProtectionEnabled = false
+        
+        -- Восстанавливаем гравитацию
+        workspace.Gravity = originalGravity
+        
+        -- Восстанавливаем коллизии
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = true
+            end
+        end
+        
+        -- Восстанавливаем здоровье
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.MaxHealth = 100
+            humanoid.Health = 100
+        end
+        
+        print("❌ Защита от урона выключена")
+    end
+end
+
 -- Функция для включения/выключения Noclip
 local function toggleNoclip()
     local character = player.Character
@@ -47,110 +106,111 @@ local function toggleNoclip()
     end
 end
 
--- Улучшенная функция умного телепорта с повторными попытками
-local function smartTeleport(targetCFrame)
+-- Улучшенная безопасная телепортация с защитой от урона
+local function safeTeleport(targetCFrame)
     local character = player.Character
     if not character then return false end
     
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return false end
     
-    -- Временно включаем Noclip для телепорта
+    print("🛡️ Активируем защиту для телепортации...")
+    
+    -- Включаем защиту от урона
+    toggleDamageProtection(true)
+    
+    -- Включаем Noclip если не включен
     local wasNoclipEnabled = noclipEnabled
     if not noclipEnabled then
         toggleNoclip()
     end
     
-    -- Метод 1: Постепенный телепорт малыми шагами
+    -- Метод 1: Мгновенная телепортация с защитой
+    local function instantTeleport()
+        humanoidRootPart.CFrame = targetCFrame
+        return true
+    end
+    
+    -- Метод 2: Постепенная телепортация
     local function gradualTeleport()
-        local steps = 50
+        local steps = 20
         local currentPos = humanoidRootPart.Position
         local targetPos = targetCFrame.Position
         local step = (targetPos - currentPos) / steps
         
         for i = 1, steps do
+            if not autoEnabled then break end
             humanoidRootPart.CFrame = CFrame.new(currentPos + step * i)
-            wait(0.02)
+            wait(0.05)
         end
-        
-        -- Дополнительная проверка и корректировка позиции
-        local finalDistance = (humanoidRootPart.Position - targetPos).Magnitude
-        if finalDistance > 5 then
-            humanoidRootPart.CFrame = targetCFrame
-        end
-        
         return true
     end
     
-    -- Метод 2: Через VehicleSeat
-    local function vehicleSeatTeleport()
-        local seat = Instance.new("VehicleSeat")
-        seat.CFrame = targetCFrame
-        seat.Anchored = true
-        seat.CanCollide = false
-        seat.Parent = workspace
-        
-        humanoidRootPart.CFrame = targetCFrame
-        wait(0.2)
-        seat:Destroy()
-        return true
-    end
-    
-    -- Метод 3: Через Platform
+    -- Метод 3: Телепорт через временную платформу
     local function platformTeleport()
+        -- Создаем безопасную платформу в целевой точке
         local platform = Instance.new("Part")
+        platform.Name = "SafeTeleportPlatform"
+        platform.Size = Vector3.new(10, 2, 10)
         platform.Anchored = true
         platform.CanCollide = true
-        platform.Size = Vector3.new(10, 2, 10)
-        platform.CFrame = targetCFrame
-        platform.Transparency = 1
+        platform.Transparency = 0.8
+        platform.Material = Enum.Material.Neon
+        platform.BrickColor = BrickColor.new("Bright green")
+        platform.CFrame = targetCFrame + Vector3.new(0, -3, 0)
         platform.Parent = workspace
         
+        -- Телепортируемся на платформу
         humanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
-        wait(0.3)
+        
+        -- Ждем стабилизации
+        wait(1)
+        
+        -- Удаляем платформу
         platform:Destroy()
+        
         return true
     end
     
-    -- Пробуем методы по порядку с повторными попытками
-    local methods = {gradualTeleport, vehicleSeatTeleport, platformTeleport}
+    -- Пробуем методы телепортации
+    local methods = {instantTeleport, gradualTeleport, platformTeleport}
+    local teleportSuccess = false
     
     for attempt = 1, 3 do
-        print("🔄 Попытка телепортации " .. attempt .. "/3")
+        print("🔄 Попытка безопасной телепортации " .. attempt .. "/3")
         
         for i, method in ipairs(methods) do
             local success, result = pcall(method)
             if success and result then
-                -- Проверяем действительно ли мы дошли до цели
                 local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
                 
-                if finalDistance <= 10 then
-                    print("✅ Телепорт успешен методом " .. i)
-                    -- Восстанавливаем исходное состояние Noclip
-                    if not wasNoclipEnabled then
-                        toggleNoclip()
-                    end
-                    return true
-                else
-                    print("⚠️ Телепорт методом " .. i .. " не до конца успешен, расстояние: " .. math.floor(finalDistance))
+                if finalDistance <= 15 then
+                    print("✅ Безопасная телепортация успешна методом " .. i)
+                    teleportSuccess = true
+                    break
                 end
-            else
-                print("❌ Метод " .. i .. " не сработал")
             end
             wait(0.5)
         end
         
-        print("🔄 Повторная попытка телепортации...")
+        if teleportSuccess then
+            break
+        end
         wait(1)
     end
     
-    -- Восстанавливаем исходное состояние Noclip
+    -- Ждем стабилизации после телепортации
+    wait(2)
+    
+    -- Восстанавливаем исходное состояние
     if not wasNoclipEnabled then
         toggleNoclip()
     end
     
-    print("❌ Все методы телепортации не сработали")
-    return false
+    -- Выключаем защиту от урона
+    toggleDamageProtection(false)
+    
+    return teleportSuccess
 end
 
 -- Функция взятия ковша
@@ -191,14 +251,12 @@ local function executeMetalCycle()
     for i = 1, 10 do
         if not autoEnabled then break end
         
-        -- Клик на MetalGiver
         pcall(function()
             fireclickdetector(clickDetector)
             print("✅ Клик MetalGiver " .. i)
         end)
         wait(0.3)
         
-        -- Ивент place
         pcall(function()
             event:FireServer(clickPart)
             print("✅ Ивент place " .. i)
@@ -221,14 +279,12 @@ local function executeClearCycle()
     for i = 1, 10 do
         if not autoEnabled then break end
         
-        -- Клик на ClearGiver
         pcall(function()
             fireclickdetector(clickDetector)
             print("✅ Клик ClearGiver " .. i)
         end)
         wait(0.3)
         
-        -- Ивент place
         pcall(function()
             event:FireServer(clickPart)
             print("✅ Ивент place Clear " .. i)
@@ -241,7 +297,6 @@ end
 
 -- ЦИКЛ 3: Лава и сбор металла
 local function executeLavaCycle()
-    -- Берем ковш
     if not equipKovsh() then
         print("❌ Не удалось взять ковш")
         return false
@@ -253,10 +308,10 @@ local function executeLavaCycle()
     if not shapesPosition then
         shapesPosition = shapesModel:GetBoundingBox().CFrame
     end
-    local shapesCFrame = shapesPosition + Vector3.new(0, 5, 0)
+    local shapesCFrame = shapesPosition + Vector3.new(0, 10, 0)
     
-    print("🔄 Телепортируемся к Shapes...")
-    if not smartTeleport(shapesCFrame) then
+    print("🔄 Безопасная телепортация к Shapes...")
+    if not safeTeleport(shapesCFrame) then
         print("❌ Не удалось телепортироваться к Shapes")
         return false
     end
@@ -269,18 +324,15 @@ local function executeLavaCycle()
     
     print("🌋 Начинаем заливку лавы...")
     
-    -- Заливаем лаву в 10 форм
     for i = 1, 10 do
         if not autoEnabled then break end
         
-        -- Берем лаву
         pcall(function()
             giveLavaEvent:FireServer(lavaGiver)
             print("✅ Взяли лаву " .. i)
         end)
         wait(0.5)
         
-        -- Выливаем в форму
         pcall(function()
             local shape = shapesModel:FindFirstChild(tostring(i))
             if shape then
@@ -329,10 +381,10 @@ local function executeBoxCycle()
     if not boxPosition then
         boxPosition = box:GetBoundingBox().CFrame
     end
-    local boxCFrame = boxPosition + Vector3.new(0, 5, 0)
+    local boxCFrame = boxPosition + Vector3.new(0, 10, 0)
     
-    print("🔄 Телепортируемся к боксу...")
-    if not smartTeleport(boxCFrame) then
+    print("🔄 Безопасная телепортация к боксу...")
+    if not safeTeleport(boxCFrame) then
         print("❌ Не удалось телепортироваться к боксу")
         return false
     end
@@ -368,7 +420,11 @@ local function startAutoCycle()
     autoEnabled = true
     currentCycle = 0
     
-    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА!")
+    -- Включаем защиту на весь цикл
+    toggleDamageProtection(true)
+    toggleNoclip()
+    
+    print("🚀 ЗАПУСК АВТОМАТИЧЕСКОГО ЦИКЛА С ЗАЩИТОЙ!")
     
     while autoEnabled do
         currentCycle = currentCycle + 1
@@ -382,10 +438,10 @@ local function startAutoCycle()
         
         -- Телепорт к ClearGiver
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
+        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 10, 0)
         
-        print("🔄 Телепортируемся к ClearGiver...")
-        smartTeleport(clearCFrame)
+        print("🔄 Безопасная телепортация к ClearGiver...")
+        safeTeleport(clearCFrame)
         
         print("⏳ Ждем 10 секунд...")
         for i = 1, 10 do
@@ -432,10 +488,10 @@ local function startAutoCycle()
         -- Телепорт к MetalGiver для следующего цикла
         if not autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
+        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 10, 0)
         
-        print("🔄 Телепортируемся к MetalGiver для следующего цикла...")
-        smartTeleport(metalCFrame)
+        print("🔄 Безопасная телепортация к MetalGiver...")
+        safeTeleport(metalCFrame)
         wait(2)
         
         print("🎉 ЦИКЛ " .. currentCycle .. " ЗАВЕРШЕН! ================")
@@ -443,7 +499,8 @@ local function startAutoCycle()
     
     print("❌ АВТОМАТИЧЕСКИЙ ЦИКЛ ОСТАНОВЛЕН")
     
-    -- Выключаем noclip при остановке
+    -- Выключаем защиту при остановке
+    toggleDamageProtection(false)
     if noclipEnabled then
         toggleNoclip()
     end
@@ -454,6 +511,12 @@ local function stopAutoCycle()
     if autoEnabled then
         autoEnabled = false
         print("🛑 Останавливаем автоматический цикл...")
+        
+        -- Выключаем защиту
+        toggleDamageProtection(false)
+        if noclipEnabled then
+            toggleNoclip()
+        end
     else
         print("ℹ️ Авто-цикл не запущен!")
     end
@@ -465,7 +528,7 @@ screenGui.Name = "AutoFactoryGUI"
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 200)
+mainFrame.Size = UDim2.new(0, 320, 0, 220)
 mainFrame.Position = UDim2.new(0, 50, 0, 50)
 mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 mainFrame.BorderSizePixel = 0
@@ -486,16 +549,16 @@ local cycleLabel = Instance.new("TextLabel")
 cycleLabel.Size = UDim2.new(1, 0, 0, 20)
 cycleLabel.Position = UDim2.new(0, 0, 0.15, 0)
 cycleLabel.BackgroundTransparency = 1
-cycleLabel.Text = "Цикл: 0"
+cycleLabel.Text = "Цикл: 0 | Защита: ВЫКЛ"
 cycleLabel.TextColor3 = Color3.new(1, 1, 1)
-cycleLabel.TextSize = 14
+cycleLabel.TextSize = 12
 cycleLabel.Font = Enum.Font.Gotham
 cycleLabel.Parent = mainFrame
 
 -- Кнопка запуска
 local startButton = Instance.new("TextButton")
 startButton.Size = UDim2.new(0.9, 0, 0, 40)
-startButton.Position = UDim2.new(0.05, 0, 0.3, 0)
+startButton.Position = UDim2.new(0.05, 0, 0.25, 0)
 startButton.BackgroundColor3 = Color3.new(0, 0.6, 0)
 startButton.Text = "🚀 ЗАПУСТИТЬ АВТО-ЦИКЛ"
 startButton.TextColor3 = Color3.new(1, 1, 1)
@@ -506,7 +569,7 @@ startButton.Parent = mainFrame
 -- Кнопка остановки
 local stopButton = Instance.new("TextButton")
 stopButton.Size = UDim2.new(0.9, 0, 0, 40)
-stopButton.Position = UDim2.new(0.05, 0, 0.6, 0)
+stopButton.Position = UDim2.new(0.05, 0, 0.5, 0)
 stopButton.BackgroundColor3 = Color3.new(0.8, 0, 0)
 stopButton.Text = "🛑 ОСТАНОВИТЬ ЦИКЛ"
 stopButton.TextColor3 = Color3.new(1, 1, 1)
@@ -517,7 +580,7 @@ stopButton.Parent = mainFrame
 -- Кнопка Noclip
 local noclipButton = Instance.new("TextButton")
 noclipButton.Size = UDim2.new(0.4, 0, 0, 25)
-noclipButton.Position = UDim2.new(0.05, 0, 0.85, 0)
+noclipButton.Position = UDim2.new(0.05, 0, 0.8, 0)
 noclipButton.BackgroundColor3 = Color3.new(0.5, 0, 0.5)
 noclipButton.Text = "👻 Noclip: ВЫКЛ"
 noclipButton.TextColor3 = Color3.new(1, 1, 1)
@@ -528,7 +591,7 @@ noclipButton.Parent = mainFrame
 -- Кнопка взятия ковша
 local kovshButton = Instance.new("TextButton")
 kovshButton.Size = UDim2.new(0.4, 0, 0, 25)
-kovshButton.Position = UDim2.new(0.55, 0, 0.85, 0)
+kovshButton.Position = UDim2.new(0.55, 0, 0.8, 0)
 kovshButton.BackgroundColor3 = Color3.new(0.2, 0.5, 0.2)
 kovshButton.Text = "🥄 Взять ковш"
 kovshButton.TextColor3 = Color3.new(1, 1, 1)
@@ -538,7 +601,7 @@ kovshButton.Parent = mainFrame
 
 -- Подключаем функции к кнопкам
 startButton.MouseButton1Click:Connect(function()
-    spawn(startAutoCycle) -- Запускаем в отдельном потоке
+    spawn(startAutoCycle)
 end)
 
 stopButton.MouseButton1Click:Connect(function()
@@ -558,11 +621,11 @@ end)
 -- Обновление информации о цикле
 game:GetService("RunService").Heartbeat:Connect(function()
     if autoEnabled then
-        cycleLabel.Text = "Цикл: " .. currentCycle .. " (работает...)"
+        cycleLabel.Text = "Цикл: " .. currentCycle .. " | Защита: ВКЛ 🛡️"
         cycleLabel.TextColor3 = Color3.new(0, 1, 0)
         startButton.BackgroundColor3 = Color3.new(0, 0.3, 0)
     else
-        cycleLabel.Text = "Цикл: " .. currentCycle .. " (остановлен)"
+        cycleLabel.Text = "Цикл: " .. currentCycle .. " | Защита: ВЫКЛ"
         cycleLabel.TextColor3 = Color3.new(1, 0, 0)
         startButton.BackgroundColor3 = Color3.new(0, 0.6, 0)
     end
@@ -605,9 +668,9 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД ЗАГРУЖЕН!")
-print("🚀 УЛУЧШЕННАЯ ТЕЛЕПОРТАЦИЯ АКТИВИРОВАНА")
+print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С ЗАЩИТОЙ ОТ УРОНА ЗАГРУЖЕН!")
+print("🛡️  Защита от урона активирована")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
-print("   👻 Включи Noclip для лучшей телепортации")
+print("   🛡️  Защита автоматически включится при запуске")
