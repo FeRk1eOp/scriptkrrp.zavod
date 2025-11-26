@@ -168,11 +168,6 @@ local function safeTweenTeleport(targetCFrame, teleportName)
     return success
 end
 
--- Обычная ультра-безопасная телепортация (теперь использует safeTweenTeleport)
-local function ultraSafeTeleport(targetCFrame)
-    return safeTweenTeleport(targetCFrame, "Ультра-безопасная телепортация")
-end
-
 -- Функция взятия ковша
 local function equipKovsh()
     local backpack = player:FindFirstChild("Backpack")
@@ -255,6 +250,185 @@ local function executeClearCycle()
     print("✅ Цикл ClearGiver завершен")
 end
 
+-- ЦИКЛ 3: Лава и сбор металла
+local function executeLavaCycle()
+    if not equipKovsh() then
+        print("❌ Не удалось взять ковш")
+        return false
+    end
+    
+    -- Телепортируемся к Shapes
+    local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
+    local shapesPosition = shapesModel:GetModelCFrame()
+    if not shapesPosition then
+        shapesPosition = shapesModel:GetBoundingBox().CFrame
+    end
+    
+    -- Добавляем безопасную высоту
+    shapesPosition = shapesPosition + Vector3.new(0, 5, 0)
+    
+    print("🔄 Безопасная телепортация к Shapes...")
+    if not safeTweenTeleport(shapesPosition, "Shapes") then
+        print("❌ Не удалось телепортироваться к Shapes")
+        return false
+    end
+    
+    -- Даем время на стабилизацию
+    wait(3)
+    
+    -- Проверяем, жив ли игрок
+    local character = player.Character
+    if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        print("💀 Игрок умер, прерываем цикл")
+        return false
+    end
+    
+    -- Ивенты для лавы
+    local giveLavaEvent = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].give_lava
+    local placeLavaEvent = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].place_lava
+    local lavaGiver = workspace.Jobs["Работник завода"].Melting_Conveyor.Lava_Giver
+    
+    print("🌋 Начинаем заливку лавы...")
+    
+    for i = 1, 10 do
+        if not autoEnabled then break end
+        
+        -- Проверяем здоровье перед каждым действием
+        if character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время заливки лавы")
+            return false
+        end
+        
+        pcall(function()
+            giveLavaEvent:FireServer(lavaGiver)
+            print("✅ Взяли лаву " .. i)
+        end)
+        wait(0.7)
+        
+        pcall(function()
+            local shape = shapesModel:FindFirstChild(tostring(i))
+            if shape then
+                placeLavaEvent:FireServer(shape)
+                print("✅ Вылили лаву в форму " .. i)
+            else
+                print("❌ Форма " .. i .. " не найдена!")
+            end
+        end)
+        wait(0.7)
+    end
+    
+    print("✅ Заливка лавы завершена")
+    
+    -- ВКЛЮЧАЕМ NOCLIP НА ВРЕМЯ ОЖИДАНИЯ 18 СЕКУНД
+    local wasNoclipBeforeWait = noclipEnabled
+    if not noclipEnabled then
+        toggleNoclip()
+        print("👻 Noclip включен на время ожидания")
+    end
+    
+    -- Ждем 18 секунд с проверкой здоровья
+    print("⏳ Ждем 18 секунд с включенным noclip...")
+    for i = 1, 18 do
+        if not autoEnabled then break end
+        
+        -- Проверяем, не умер ли игрок
+        if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время ожидания")
+            -- Выключаем noclip перед выходом
+            if not wasNoclipBeforeWait then
+                toggleNoclip()
+            end
+            return false
+        end
+        wait(1)
+    end
+    
+    -- ВЫКЛЮЧАЕМ NOCLIP ПОСЛЕ ОЖИДАНИЯ (если он был выключен до этого)
+    if not wasNoclipBeforeWait then
+        toggleNoclip()
+        print("👻 Noclip выключен после ожидания")
+    end
+    
+    -- Собираем слитки
+    print("💰 Собираем слитки...")
+    for i = 1, 10 do
+        if not autoEnabled then break end
+        
+        -- Проверка здоровья
+        if not player.Character or player.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время сбора")
+            return false
+        end
+        
+        local shape = shapesModel:FindFirstChild(tostring(i))
+        if shape then
+            local clickDetector = shape:FindFirstChildOfClass("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                print("✅ Собрали слиток " .. i)
+            end
+        end
+        wait(0.2)
+    end
+    
+    print("✅ Слитки собраны")
+    return true
+end
+
+-- ЦИКЛ 4: Загрузка в бокс
+local function executeBoxCycle()
+    -- Получаем позицию бокса
+    local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
+    local boxPosition = box:GetModelCFrame()
+    if not boxPosition then
+        boxPosition = box:GetBoundingBox().CFrame
+    end
+    
+    -- Добавляем безопасную высоту и отодвигаем от бокса
+    boxPosition = boxPosition + Vector3.new(0, 5, 3)
+    
+    print("🔄 Безопасная телепортация к боксу...")
+    if not safeTweenTeleport(boxPosition, "Бокс") then
+        print("❌ Не удалось телепортироваться к боксу")
+        return false
+    end
+    
+    -- Даем БОЛЬШЕ времени на стабилизацию для бокса
+    wait(5)
+    
+    -- Проверяем, жив ли игрок
+    local character = player.Character
+    if not character or not character:FindFirstChildOfClass("Humanoid") or character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+        print("💀 Игрок умер при телепортации к боксу")
+        return false
+    end
+    
+    -- Загружаем металл в бокс
+    local Event = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].place_metal
+    local boxPart = workspace.Jobs["Работник завода"].Box_Conveyor.Box.body
+    
+    print("📦 Загружаем металл в бокс...")
+    
+    for i = 1, 10 do
+        if not autoEnabled then break end
+        
+        -- Проверка здоровья
+        if character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+            print("💀 Игрок умер во время загрузки")
+            return false
+        end
+        
+        pcall(function()
+            Event:FireServer(boxPart)
+            print("✅ Загрузили слиток " .. i)
+        end)
+        wait(0.5)
+    end
+    
+    print("✅ Загрузка в бокс завершена")
+    return true
+end
+
 -- Главная функция автоматического цикла
 local function startAutoCycle()
     if autoEnabled then
@@ -322,9 +496,49 @@ local function startAutoCycle()
             wait(1)
         end
         
-        -- Пропускаем оставшиеся циклы для тестирования
-        print("⏭️ Пропускаем оставшиеся циклы для тестирования...")
-        break
+        -- ЦИКЛ 3: Лава и сбор
+        if not autoEnabled then break end
+        local lavaSuccess = executeLavaCycle()
+        
+        if not lavaSuccess then
+            print("❌ Ошибка в цикле лавы, продолжаем...")
+        end
+        
+        -- ЦИКЛ 4: Загрузка в бокс
+        if not autoEnabled then break end
+        local boxSuccess = executeBoxCycle()
+        
+        if not boxSuccess then
+            print("❌ Ошибка в цикле бокса, продолжаем...")
+        end
+        
+        -- Ожидание 20 секунд перед следующим циклом
+        if not autoEnabled then break end
+        print("⏳ Ждем 20 секунд перед следующим циклом...")
+        for i = 1, 20 do
+            if not autoEnabled then break end
+            wait(1)
+        end
+        
+        -- Телепорт к MetalGiver для следующего цикла
+        if not autoEnabled then break end
+        local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
+        if not metalGiver then
+            print("❌ MetalGiver не найден!")
+            break
+        end
+        
+        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
+        
+        print("🔄 Безопасная телепортация к MetalGiver...")
+        if not safeTweenTeleport(metalCFrame, "MetalGiver") then
+            print("❌ Не удалось телепортироваться к MetalGiver, пробуем продолжить...")
+        end
+        
+        -- Даем время на стабилизацию
+        wait(3)
+        
+        print("🎉 ЦИКЛ " .. currentCycle .. " ЗАВЕРШЕН! ================")
     end
     
     print("❌ АВТОМАТИЧЕСКИЙ ЦИКЛ ОСТАНОВЛЕН")
@@ -492,7 +706,9 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
 end)
 
 print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД С БЕЗОПАСНОЙ ТЕЛЕПОРТАЦИЕЙ ЗАГРУЖЕН!")
-print("🌀  TweenService-телепортация активирована")
+print("🌀  TweenService-телепортация активирована для всех точек")
+print("👻  Noclip автоматически включается на время ожидания после лавы")
+print("🛡️  Улучшенная защита от смерти при телепортации")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
