@@ -47,7 +47,7 @@ local function toggleNoclip()
     end
 end
 
--- Умный телепорт
+-- Умный телепорт (исправленная версия)
 local function smartTeleport(targetCFrame)
     local character = player.Character
     if not character then return false end
@@ -60,38 +60,29 @@ local function smartTeleport(targetCFrame)
         toggleNoclip()
     end
     
-    -- Метод постепенного телепорта
-    local function gradualTeleport()
-        local steps = 30
-        local currentPos = humanoidRootPart.Position
-        local targetPos = targetCFrame.Position
-        local step = (targetPos - currentPos) / steps
-        
-        for i = 1, steps do
-            humanoidRootPart.CFrame = CFrame.new(currentPos + step * i)
-            wait(0.01)
+    -- Простой телепорт без сложных методов
+    humanoidRootPart.CFrame = targetCFrame
+    
+    -- Проверяем успешность телепорта
+    wait(0.5)
+    local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+    
+    if finalDistance <= 10 then
+        if not wasNoclipEnabled then
+            toggleNoclip()
         end
-        humanoidRootPart.CFrame = targetCFrame
+        print("✅ Телепорт успешен")
         return true
-    end
-    
-    for attempt = 1, 3 do
-        local success = pcall(gradualTeleport)
-        local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
-        
-        if success and finalDistance <= 10 then
-            if not wasNoclipEnabled then
-                toggleNoclip()
-            end
-            return true
-        end
+    else
+        -- Повторная попытка
+        humanoidRootPart.CFrame = targetCFrame
         wait(0.5)
+        
+        if not wasNoclipEnabled then
+            toggleNoclip()
+        end
+        return (humanoidRootPart.Position - targetCFrame.Position).Magnitude <= 10
     end
-    
-    if not wasNoclipEnabled then
-        toggleNoclip()
-    end
-    return false
 end
 
 -- Функция взятия ковша
@@ -99,7 +90,10 @@ local function equipKovsh()
     local backpack = player:FindFirstChild("Backpack")
     local character = player.Character
     
-    if not backpack or not character then return false end
+    if not backpack or not character then 
+        print("❌ Рюкзак или персонаж не найден")
+        return false 
+    end
     
     local kovsh = backpack:FindFirstChild("Сосуд")
     if not kovsh then
@@ -108,6 +102,7 @@ local function equipKovsh()
     end
     
     if character:FindFirstChild("Сосуд") then
+        print("✅ Ковш уже в руке")
         return true
     end
     
@@ -131,12 +126,14 @@ local function executeMetalCycle()
         -- Клик на MetalGiver
         pcall(function()
             fireclickdetector(clickDetector)
+            print("✅ Клик MetalGiver " .. i)
         end)
         wait(0.3)
         
         -- Ивент place
         pcall(function()
             event:FireServer(clickPart)
+            print("✅ Ивент place " .. i)
         end)
         wait(0.3)
     end
@@ -159,12 +156,14 @@ local function executeClearCycle()
         -- Клик на ClearGiver
         pcall(function()
             fireclickdetector(clickDetector)
+            print("✅ Клик ClearGiver " .. i)
         end)
         wait(0.3)
         
         -- Ивент place
         pcall(function()
             event:FireServer(clickPart)
+            print("✅ Ивент place Clear " .. i)
         end)
         wait(0.3)
     end
@@ -180,12 +179,12 @@ local function executeLavaCycle()
         return false
     end
     
-    -- Телепортируемся к Shapes
+    -- Телепортируемся к Shapes (ИСПРАВЛЕНО - используем CFrame вместо GetModelCFrame)
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
-    local shapesCFrame = shapesModel:GetModelCFrame() or shapesModel:GetBoundingBox().p
+    local shapesCFrame = shapesModel:GetBoundingBox().CFrame + Vector3.new(0, 5, 0)
     
     print("🔄 Телепортируемся к Shapes...")
-    if not smartTeleport(shapesCFrame + Vector3.new(0, 3, 0)) then
+    if not smartTeleport(shapesCFrame) then
         print("❌ Не удалось телепортироваться к Shapes")
         return false
     end
@@ -205,6 +204,7 @@ local function executeLavaCycle()
         -- Берем лаву
         pcall(function()
             giveLavaEvent:FireServer(lavaGiver)
+            print("✅ Взяли лаву " .. i)
         end)
         wait(0.5)
         
@@ -213,6 +213,9 @@ local function executeLavaCycle()
             local shape = shapesModel:FindFirstChild(tostring(i))
             if shape then
                 placeLavaEvent:FireServer(shape)
+                print("✅ Вылили лаву в форму " .. i)
+            else
+                print("❌ Форма " .. i .. " не найдена!")
             end
         end)
         wait(0.5)
@@ -237,6 +240,7 @@ local function executeLavaCycle()
             local clickDetector = shape:FindFirstChildOfClass("ClickDetector")
             if clickDetector then
                 fireclickdetector(clickDetector)
+                print("✅ Собрали слиток " .. i)
             end
         end
     end
@@ -247,12 +251,12 @@ end
 
 -- ЦИКЛ 4: Загрузка в бокс
 local function executeBoxCycle()
-    -- Телепортируемся к боксу
+    -- Телепортируемся к боксу (ИСПРАВЛЕНО - используем CFrame вместо GetModelCFrame)
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
-    local boxCFrame = box:GetModelCFrame() or box:GetBoundingBox().p
+    local boxCFrame = box:GetBoundingBox().CFrame + Vector3.new(0, 5, 0)
     
     print("🔄 Телепортируемся к боксу...")
-    if not smartTeleport(boxCFrame + Vector3.new(0, 3, 0)) then
+    if not smartTeleport(boxCFrame) then
         print("❌ Не удалось телепортироваться к боксу")
         return false
     end
@@ -269,6 +273,7 @@ local function executeBoxCycle()
         
         pcall(function()
             Event:FireServer(boxPart)
+            print("✅ Загрузили слиток " .. i)
         end)
         wait(0.3)
     end
@@ -291,19 +296,20 @@ local function startAutoCycle()
     
     while autoEnabled do
         currentCycle = currentCycle + 1
-        print("\n🔄 ЗАПУСК ЦИКЛА " .. currentCycle .. " ================")
+        print("\n🎯 ЗАПУСК ЦИКЛА " .. currentCycle .. " ================")
         
         -- ЦИКЛ 1: MetalGiver
         if not autoEnabled then break end
         executeMetalCycle()
         
-        -- Телепорт к ClearGiver и ожидание
         if not autoEnabled then break end
+        
+        -- Телепорт к ClearGiver (ИСПРАВЛЕНО)
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        local clearCFrame = clearGiver:GetModelCFrame() or clearGiver:GetBoundingBox().p
+        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 3, 0)
         
         print("🔄 Телепортируемся к ClearGiver...")
-        smartTeleport(clearCFrame + Vector3.new(0, 3, 0))
+        smartTeleport(clearCFrame)
         
         print("⏳ Ждем 10 секунд...")
         for i = 1, 10 do
@@ -325,11 +331,19 @@ local function startAutoCycle()
         
         -- ЦИКЛ 3: Лава и сбор
         if not autoEnabled then break end
-        executeLavaCycle()
+        local lavaSuccess = executeLavaCycle()
+        
+        if not lavaSuccess then
+            print("❌ Ошибка в цикле лавы, продолжаем...")
+        end
         
         -- ЦИКЛ 4: Загрузка в бокс
         if not autoEnabled then break end
-        executeBoxCycle()
+        local boxSuccess = executeBoxCycle()
+        
+        if not boxSuccess then
+            print("❌ Ошибка в цикле бокса, продолжаем...")
+        end
         
         -- Ожидание 20 секунд перед следующим циклом
         if not autoEnabled then break end
@@ -339,19 +353,24 @@ local function startAutoCycle()
             wait(1)
         end
         
-        -- Телепорт к MetalGiver для следующего цикла
+        -- Телепорт к MetalGiver для следующего цикла (ИСПРАВЛЕНО)
         if not autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        local metalCFrame = metalGiver:GetModelCFrame() or metalGiver:GetBoundingBox().p
+        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 3, 0)
         
         print("🔄 Телепортируемся к MetalGiver для следующего цикла...")
-        smartTeleport(metalCFrame + Vector3.new(0, 3, 0))
+        smartTeleport(metalCFrame)
         wait(2)
         
         print("🎉 ЦИКЛ " .. currentCycle .. " ЗАВЕРШЕН! ================")
     end
     
     print("❌ АВТОМАТИЧЕСКИЙ ЦИКЛ ОСТАНОВЛЕН")
+    
+    -- Выключаем noclip при остановке
+    if noclipEnabled then
+        toggleNoclip()
+    end
 end
 
 -- Функция остановки цикла
@@ -359,12 +378,8 @@ local function stopAutoCycle()
     if autoEnabled then
         autoEnabled = false
         print("🛑 Останавливаем автоматический цикл...")
-        
-        if noclipEnabled then
-            toggleNoclip()
-        end
     else
-        print("❌ Авто-цикл не запущен!")
+        print("ℹ️ Авто-цикл не запущен!")
     end
 end
 
@@ -447,7 +462,7 @@ kovshButton.Parent = mainFrame
 
 -- Подключаем функции к кнопкам
 startButton.MouseButton1Click:Connect(function()
-    startAutoCycle()
+    spawn(startAutoCycle) -- Запускаем в отдельном потоке
 end)
 
 stopButton.MouseButton1Click:Connect(function()
@@ -515,8 +530,7 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
 end)
 
 print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД ЗАГРУЖЕН!")
+print("🔧 Исправлены ошибки телепортации")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
-print("   👻 Noclip поможет избежать препятствий")
-print("   🔄 Цикл будет повторяться автоматически до остановки")
