@@ -2,6 +2,41 @@
 local noclipEnabled = false
 local noclipConnection = nil
 
+-- Функция для взятия ковша в руку
+local function equipKovsh()
+    local player = game.Players.LocalPlayer
+    local backpack = player:FindFirstChild("Backpack")
+    local character = player.Character
+    
+    if not backpack then
+        print("❌ Рюкзак не найден")
+        return false
+    end
+    
+    if not character then
+        print("❌ Персонаж не найден")
+        return false
+    end
+    
+    -- Ищем ковш в рюкзаке
+    local kovsh = backpack:FindFirstChild("Сосуд")
+    if not kovsh then
+        print("❌ Ковш не найден в рюкзаке")
+        return false
+    end
+    
+    -- Проверяем, не находится ли ковш уже в руке
+    if character:FindFirstChild("Сосуд") then
+        print("✅ Ковш уже в руке")
+        return true
+    end
+    
+    -- Берем ковш в руку
+    kovsh.Parent = character
+    print("✅ Ковш взят в руку")
+    return true
+end
+
 -- Функция для включения/выключения Noclip
 local function toggleNoclip()
     local player = game.Players.LocalPlayer
@@ -45,7 +80,7 @@ local function toggleNoclip()
     end
 end
 
--- Функция умного телепорта
+-- Улучшенная функция умного телепорта с повторными попытками
 local function smartTeleport(targetCFrame)
     local player = game.Players.LocalPlayer
     local character = player.Character
@@ -62,15 +97,22 @@ local function smartTeleport(targetCFrame)
     
     -- Метод 1: Постепенный телепорт малыми шагами
     local function gradualTeleport()
-        local steps = 30
+        local steps = 50
         local currentPos = humanoidRootPart.Position
         local targetPos = targetCFrame.Position
         local step = (targetPos - currentPos) / steps
         
         for i = 1, steps do
             humanoidRootPart.CFrame = CFrame.new(currentPos + step * i)
-            wait(0.01)
+            wait(0.02)
         end
+        
+        -- Дополнительная проверка и корректировка позиции
+        local finalDistance = (humanoidRootPart.Position - targetPos).Magnitude
+        if finalDistance > 5 then
+            humanoidRootPart.CFrame = targetCFrame
+        end
+        
         return true
     end
     
@@ -78,10 +120,12 @@ local function smartTeleport(targetCFrame)
     local function vehicleSeatTeleport()
         local seat = Instance.new("VehicleSeat")
         seat.CFrame = targetCFrame
+        seat.Anchored = true
+        seat.CanCollide = false
         seat.Parent = workspace
         
         humanoidRootPart.CFrame = targetCFrame
-        wait(0.1)
+        wait(0.2)
         seat:Destroy()
         return true
     end
@@ -90,34 +134,48 @@ local function smartTeleport(targetCFrame)
     local function platformTeleport()
         local platform = Instance.new("Part")
         platform.Anchored = true
-        platform.CanCollide = false
-        platform.Size = Vector3.new(5, 1, 5)
+        platform.CanCollide = true
+        platform.Size = Vector3.new(10, 2, 10)
         platform.CFrame = targetCFrame
         platform.Transparency = 1
         platform.Parent = workspace
         
-        humanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 3, 0)
-        wait(0.1)
+        humanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+        wait(0.3)
         platform:Destroy()
         return true
     end
     
-    -- Пробуем методы по порядку
+    -- Пробуем методы по порядку с повторными попытками
     local methods = {gradualTeleport, vehicleSeatTeleport, platformTeleport}
     
-    for i, method in ipairs(methods) do
-        local success, result = pcall(method)
-        if success and result then
-            print("✅ Телепорт успешен методом " .. i)
-            -- Восстанавливаем исходное состояние Noclip
-            if not wasNoclipEnabled then
-                toggleNoclip()
+    for attempt = 1, 3 do
+        print("🔄 Попытка телепортации " .. attempt .. "/3")
+        
+        for i, method in ipairs(methods) do
+            local success, result = pcall(method)
+            if success and result then
+                -- Проверяем действительно ли мы дошли до цели
+                local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+                
+                if finalDistance <= 10 then
+                    print("✅ Телепорт успешен методом " .. i)
+                    -- Восстанавливаем исходное состояние Noclip
+                    if not wasNoclipEnabled then
+                        toggleNoclip()
+                    end
+                    return true
+                else
+                    print("⚠️ Телепорт методом " .. i .. " не до конца успешен, расстояние: " .. math.floor(finalDistance))
+                end
+            else
+                print("❌ Метод " .. i .. " не сработал")
             end
-            return true
-        else
-            print("❌ Метод " .. i .. " не сработал")
+            wait(0.5)
         end
-        wait(0.5)
+        
+        print("🔄 Повторная попытка телепортации...")
+        wait(1)
     end
     
     -- Восстанавливаем исходное состояние Noclip
@@ -125,11 +183,60 @@ local function smartTeleport(targetCFrame)
         toggleNoclip()
     end
     
+    print("❌ Все методы телепортации не сработали")
     return false
 end
 
--- Функция для автоматического взятия лавы и заливки в формы
-local function autoLavaProcess()
+-- Функция для автоматического сбора слитков
+local function collectShapes()
+    local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
+    
+    print("🔄 Начинаем сбор слитков...")
+    
+    for i = 1, 10 do
+        local shape = shapesModel:FindFirstChild(tostring(i))
+        if shape then
+            local clickDetector = shape:FindFirstChildOfClass("ClickDetector")
+            if clickDetector then
+                fireclickdetector(clickDetector)
+                print("✅ Слиток " .. i .. " собран")
+            else
+                print("❌ ClickDetector не найден в форме " .. i)
+            end
+        else
+            print("❌ Форма " .. i .. " не найдена")
+        end
+        wait(0.5)
+    end
+    
+    print("🎉 Все слитки собраны!")
+end
+
+-- Функция для автоматической загрузки слитков в бокс
+local function autoLoadMetals()
+    local Event = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].place_metal
+    local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box.body
+    
+    print("🔄 Начинаем загрузку слитков в бокс...")
+    
+    for i = 1, 10 do
+        local success, error = pcall(function()
+            Event:FireServer(box)
+            print("✅ Слиток " .. i .. " загружен в бокс!")
+        end)
+        
+        if not success then
+            print("❌ Ошибка загрузки: " .. tostring(error))
+        end
+        
+        wait(0.5)
+    end
+    
+    print("🎉 Все слитки загружены в бокс!")
+end
+
+-- Функция для полного автоматического процесса
+local function fullAutoProcess()
     local player = game.Players.LocalPlayer
     local character = player.Character
     
@@ -139,18 +246,21 @@ local function autoLavaProcess()
         return
     end
     
-    -- Сохраняем исходную позицию
-    local originalPosition = character.HumanoidRootPart.Position
+    -- Берем ковш в руку
+    if not equipKovsh() then
+        print("❌ Не удалось взять ковш, процесс прерван")
+        return
+    end
     
-    -- Телепортируемся к лаве
-    local lavaGiver = workspace.Jobs["Работник завода"].Melting_Conveyor.Lava_Giver
-    local targetCFrame = lavaGiver.CFrame + Vector3.new(0, 3, 0)
+    -- Телепортируемся к Shapes
+    local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
+    local shapesCFrame = shapesModel:GetModelCFrame() or shapesModel:GetBoundingBox().p
     
-    print("🔄 Телепортируемся к лаве...")
-    local teleportSuccess = smartTeleport(targetCFrame)
+    print("🔄 Телепортируемся к Shapes...")
+    local teleportSuccess = smartTeleport(shapesCFrame + Vector3.new(0, 5, 0))
     
     if not teleportSuccess then
-        print("❌ Не удалось телепортироваться к лаве")
+        print("❌ Не удалось телепортироваться к Shapes")
         return
     end
     
@@ -159,14 +269,15 @@ local function autoLavaProcess()
     -- Ивенты для работы с лавой
     local giveLavaEvent = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].give_lava
     local placeLavaEvent = game:GetService("ReplicatedStorage").Events.Jobs["Работник завода"].place_lava
+    local lavaGiver = workspace.Jobs["Работник завода"].Melting_Conveyor.Lava_Giver
     
     print("🔥 Начинаем процесс заполнения 10 форм...")
     
-    -- Выполняем 10 циклов
+    -- Выполняем 10 циклов заливки лавы
     for i = 1, 10 do
-        print("🔄 Цикл " .. i .. "/10")
+        print("🔄 Цикл " .. i .. "/10 - Заливка лавы")
         
-        -- Шаг 1: Берем лаву
+        -- Берем лаву
         local success1, error1 = pcall(function()
             giveLavaEvent:FireServer(lavaGiver)
             print("✅ Лава взята")
@@ -176,11 +287,11 @@ local function autoLavaProcess()
             print("❌ Ошибка взятия лавы: " .. tostring(error1))
         end
         
-        wait(1) -- Ждем пока лава наберется
+        wait(1)
         
-        -- Шаг 2: Выливаем лаву в форму
+        -- Выливаем лаву в форму
         local success2, error2 = pcall(function()
-            local shape = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes[tostring(i)]
+            local shape = shapesModel:FindFirstChild(tostring(i))
             
             if shape then
                 placeLavaEvent:FireServer(shape)
@@ -194,15 +305,54 @@ local function autoLavaProcess()
             print("❌ Ошибка выливания лавы: " .. tostring(error2))
         end
         
-        wait(1) -- Ждем перед следующим циклом
+        wait(1)
     end
     
     print("🎉 Все 10 форм заполнены лавой!")
     
-    -- Возвращаемся на исходную позицию
-    print("🔄 Возвращаемся на исходную позицию...")
-    smartTeleport(CFrame.new(originalPosition))
-    print("✅ Процесс завершен!")
+    -- Ждем 8 секунд пока Shapes едет
+    print("⏳ Ждем 8 секунд пока Shapes едет...")
+    wait(8)
+    
+    -- Собираем слитки
+    collectShapes()
+    
+    -- Телепортируемся к боксу
+    local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
+    local boxCFrame = box:GetModelCFrame() or box:GetBoundingBox().p
+    
+    print("🔄 Телепортируемся к боксу...")
+    local boxTeleportSuccess = smartTeleport(boxCFrame + Vector3.new(0, 5, 0))
+    
+    if not boxTeleportSuccess then
+        print("❌ Не удалось телепортироваться к боксу")
+        return
+    end
+    
+    wait(2) -- Ждем стабилизации
+    
+    -- Загружаем слитки в бокс
+    autoLoadMetals()
+    
+    print("🎉 Полный процесс завершен!")
+end
+
+-- Функция для телепорта к Shapes
+local function teleportToShapes()
+    local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
+    local shapesCFrame = shapesModel:GetModelCFrame() or shapesModel:GetBoundingBox().p
+    
+    print("🔄 Телепортируемся к Shapes...")
+    smartTeleport(shapesCFrame + Vector3.new(0, 5, 0))
+end
+
+-- Функция для телепорта к боксу
+local function teleportToBox()
+    local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
+    local boxCFrame = box:GetModelCFrame() or box:GetBoundingBox().p
+    
+    print("🔄 Телепортируемся к боксу...")
+    smartTeleport(boxCFrame + Vector3.new(0, 5, 0))
 end
 
 -- Создаем GUI
@@ -210,11 +360,11 @@ local player = game.Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AutoLavaGUI"
+screenGui.Name = "FullAutoGUI"
 screenGui.Parent = playerGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 250, 0, 190)
+mainFrame.Size = UDim2.new(0, 250, 0, 280)
 mainFrame.Position = UDim2.new(0, 50, 0, 50)
 mainFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 mainFrame.BorderSizePixel = 0
@@ -224,27 +374,38 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 30)
 titleLabel.Position = UDim2.new(0, 0, 0, 0)
 titleLabel.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-titleLabel.Text = "🌋 Авто-Лава Процесс"
+titleLabel.Text = "🏭 Полный Авто-Процесс"
 titleLabel.TextColor3 = Color3.new(1, 1, 1)
 titleLabel.TextSize = 14
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.Parent = mainFrame
 
--- Кнопка автоматического процесса
-local autoProcessButton = Instance.new("TextButton")
-autoProcessButton.Size = UDim2.new(0.9, 0, 0, 40)
-autoProcessButton.Position = UDim2.new(0.05, 0, 0.2, 0)
-autoProcessButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.1)
-autoProcessButton.Text = "🔥 АВТОМАТИЧЕСКИЙ ПРОЦЕСС"
-autoProcessButton.TextColor3 = Color3.new(1, 1, 1)
-autoProcessButton.TextSize = 12
-autoProcessButton.Font = Enum.Font.GothamBold
-autoProcessButton.Parent = mainFrame
+-- Кнопка полного автоматического процесса
+local fullAutoButton = Instance.new("TextButton")
+fullAutoButton.Size = UDim2.new(0.9, 0, 0, 40)
+fullAutoButton.Position = UDim2.new(0.05, 0, 0.12, 0)
+fullAutoButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.1)
+fullAutoButton.Text = "🔥 ПОЛНЫЙ АВТО-ПРОЦЕСС"
+fullAutoButton.TextColor3 = Color3.new(1, 1, 1)
+fullAutoButton.TextSize = 12
+fullAutoButton.Font = Enum.Font.GothamBold
+fullAutoButton.Parent = mainFrame
+
+-- Кнопка взятия ковша
+local kovshButton = Instance.new("TextButton")
+kovshButton.Size = UDim2.new(0.9, 0, 0, 30)
+kovshButton.Position = UDim2.new(0.05, 0, 0.3, 0)
+kovshButton.BackgroundColor3 = Color3.new(0.2, 0.6, 0.2)
+kovshButton.Text = "🥄 Взять ковш"
+kovshButton.TextColor3 = Color3.new(1, 1, 1)
+kovshButton.TextSize = 12
+kovshButton.Font = Enum.Font.Gotham
+kovshButton.Parent = mainFrame
 
 -- Кнопка Noclip
 local noclipButton = Instance.new("TextButton")
 noclipButton.Size = UDim2.new(0.9, 0, 0, 30)
-noclipButton.Position = UDim2.new(0.05, 0, 0.5, 0)
+noclipButton.Position = UDim2.new(0.05, 0, 0.45, 0)
 noclipButton.BackgroundColor3 = Color3.new(0.5, 0, 0.5)
 noclipButton.Text = "👻 Noclip: ВЫКЛ"
 noclipButton.TextColor3 = Color3.new(1, 1, 1)
@@ -252,49 +413,65 @@ noclipButton.TextSize = 12
 noclipButton.Font = Enum.Font.Gotham
 noclipButton.Parent = mainFrame
 
--- Кнопка телепорта к лаве
-local teleportButton = Instance.new("TextButton")
-teleportButton.Size = UDim2.new(0.9, 0, 0, 30)
-teleportButton.Position = UDim2.new(0.05, 0, 0.7, 0)
-teleportButton.BackgroundColor3 = Color3.new(0, 0.5, 1)
-teleportButton.Text = "📌 Телепорт к лаве"
-teleportButton.TextColor3 = Color3.new(1, 1, 1)
-teleportButton.TextSize = 12
-teleportButton.Font = Enum.Font.Gotham
-teleportButton.Parent = mainFrame
+-- Кнопка телепорта к Shapes
+local shapesTeleportButton = Instance.new("TextButton")
+shapesTeleportButton.Size = UDim2.new(0.9, 0, 0, 30)
+shapesTeleportButton.Position = UDim2.new(0.05, 0, 0.6, 0)
+shapesTeleportButton.BackgroundColor3 = Color3.new(0, 0.5, 1)
+shapesTeleportButton.Text = "📦 Телепорт к Shapes"
+shapesTeleportButton.TextColor3 = Color3.new(1, 1, 1)
+shapesTeleportButton.TextSize = 12
+shapesTeleportButton.Font = Enum.Font.Gotham
+shapesTeleportButton.Parent = mainFrame
 
--- Кнопка закрытия GUI
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0.9, 0, 0, 30)
-closeButton.Position = UDim2.new(0.05, 0, 0.9, 0)
-closeButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
-closeButton.Text = "❌ Закрыть"
-closeButton.TextColor3 = Color3.new(1, 1, 1)
-closeButton.TextSize = 12
-closeButton.Font = Enum.Font.Gotham
-closeButton.Parent = mainFrame
+-- Кнопка телепорта к боксу
+local boxTeleportButton = Instance.new("TextButton")
+boxTeleportButton.Size = UDim2.new(0.9, 0, 0, 30)
+boxTeleportButton.Position = UDim2.new(0.05, 0, 0.75, 0)
+boxTeleportButton.BackgroundColor3 = Color3.new(0.5, 0.3, 0.1)
+boxTeleportButton.Text = "📦 Телепорт к боксу"
+boxTeleportButton.TextColor3 = Color3.new(1, 1, 1)
+boxTeleportButton.TextSize = 12
+boxTeleportButton.Font = Enum.Font.Gotham
+boxTeleportButton.Parent = mainFrame
+
+-- Кнопка сбора слитков
+local collectButton = Instance.new("TextButton")
+collectButton.Size = UDim2.new(0.9, 0, 0, 30)
+collectButton.Position = UDim2.new(0.05, 0, 0.9, 0)
+collectButton.BackgroundColor3 = Color3.new(0.3, 0.2, 0.6)
+collectButton.Text = "💰 Собрать слитки"
+collectButton.TextColor3 = Color3.new(1, 1, 1)
+collectButton.TextSize = 12
+collectButton.Font = Enum.Font.Gotham
+collectButton.Parent = mainFrame
 
 -- Подключаем функции к кнопкам
-autoProcessButton.MouseButton1Click:Connect(function()
-    print("🚀 Запускаем автоматический процесс...")
-    autoLavaProcess()
+fullAutoButton.MouseButton1Click:Connect(function()
+    print("🚀 Запускаем полный автоматический процесс...")
+    fullAutoProcess()
 end)
 
-teleportButton.MouseButton1Click:Connect(function()
-    local lavaGiver = workspace.Jobs["Работник завода"].Melting_Conveyor.Lava_Giver
-    local targetCFrame = lavaGiver.CFrame + Vector3.new(0, 3, 0)
-    smartTeleport(targetCFrame)
+kovshButton.MouseButton1Click:Connect(function()
+    equipKovsh()
+end)
+
+shapesTeleportButton.MouseButton1Click:Connect(function()
+    teleportToShapes()
+end)
+
+boxTeleportButton.MouseButton1Click:Connect(function()
+    teleportToBox()
+end)
+
+collectButton.MouseButton1Click:Connect(function()
+    collectShapes()
 end)
 
 noclipButton.MouseButton1Click:Connect(function()
     toggleNoclip()
     noclipButton.Text = noclipEnabled and "👻 Noclip: ВКЛ" or "👻 Noclip: ВЫКЛ"
     noclipButton.BackgroundColor3 = noclipEnabled and Color3.new(0, 0.8, 0) or Color3.new(0.5, 0, 0.5)
-end)
-
-closeButton.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-    print("✅ GUI закрыт")
 end)
 
 -- Делаем GUI перемещаемым
@@ -334,5 +511,5 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("✅ Авто-Лава процесс создан!")
-print("🔥 Нажми кнопку 'АВТОМАТИЧЕСКИЙ ПРОЦЕСС' для запуска")
+print("✅ Полный авто-процесс создан!")
+print("🔥 Нажми кнопку 'ПОЛНЫЙ АВТО-ПРОЦЕСС' для запуска")
