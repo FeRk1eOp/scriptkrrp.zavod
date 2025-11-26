@@ -47,7 +47,7 @@ local function toggleNoclip()
     end
 end
 
--- Умный телепорт (исправленная версия)
+-- Улучшенная функция умного телепорта с повторными попытками
 local function smartTeleport(targetCFrame)
     local character = player.Character
     if not character then return false end
@@ -55,34 +55,102 @@ local function smartTeleport(targetCFrame)
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return false end
     
+    -- Временно включаем Noclip для телепорта
     local wasNoclipEnabled = noclipEnabled
     if not noclipEnabled then
         toggleNoclip()
     end
     
-    -- Простой телепорт без сложных методов
-    humanoidRootPart.CFrame = targetCFrame
-    
-    -- Проверяем успешность телепорта
-    wait(0.5)
-    local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
-    
-    if finalDistance <= 10 then
-        if not wasNoclipEnabled then
-            toggleNoclip()
-        end
-        print("✅ Телепорт успешен")
-        return true
-    else
-        -- Повторная попытка
-        humanoidRootPart.CFrame = targetCFrame
-        wait(0.5)
+    -- Метод 1: Постепенный телепорт малыми шагами
+    local function gradualTeleport()
+        local steps = 50
+        local currentPos = humanoidRootPart.Position
+        local targetPos = targetCFrame.Position
+        local step = (targetPos - currentPos) / steps
         
-        if not wasNoclipEnabled then
-            toggleNoclip()
+        for i = 1, steps do
+            humanoidRootPart.CFrame = CFrame.new(currentPos + step * i)
+            wait(0.02)
         end
-        return (humanoidRootPart.Position - targetCFrame.Position).Magnitude <= 10
+        
+        -- Дополнительная проверка и корректировка позиции
+        local finalDistance = (humanoidRootPart.Position - targetPos).Magnitude
+        if finalDistance > 5 then
+            humanoidRootPart.CFrame = targetCFrame
+        end
+        
+        return true
     end
+    
+    -- Метод 2: Через VehicleSeat
+    local function vehicleSeatTeleport()
+        local seat = Instance.new("VehicleSeat")
+        seat.CFrame = targetCFrame
+        seat.Anchored = true
+        seat.CanCollide = false
+        seat.Parent = workspace
+        
+        humanoidRootPart.CFrame = targetCFrame
+        wait(0.2)
+        seat:Destroy()
+        return true
+    end
+    
+    -- Метод 3: Через Platform
+    local function platformTeleport()
+        local platform = Instance.new("Part")
+        platform.Anchored = true
+        platform.CanCollide = true
+        platform.Size = Vector3.new(10, 2, 10)
+        platform.CFrame = targetCFrame
+        platform.Transparency = 1
+        platform.Parent = workspace
+        
+        humanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+        wait(0.3)
+        platform:Destroy()
+        return true
+    end
+    
+    -- Пробуем методы по порядку с повторными попытками
+    local methods = {gradualTeleport, vehicleSeatTeleport, platformTeleport}
+    
+    for attempt = 1, 3 do
+        print("🔄 Попытка телепортации " .. attempt .. "/3")
+        
+        for i, method in ipairs(methods) do
+            local success, result = pcall(method)
+            if success and result then
+                -- Проверяем действительно ли мы дошли до цели
+                local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
+                
+                if finalDistance <= 10 then
+                    print("✅ Телепорт успешен методом " .. i)
+                    -- Восстанавливаем исходное состояние Noclip
+                    if not wasNoclipEnabled then
+                        toggleNoclip()
+                    end
+                    return true
+                else
+                    print("⚠️ Телепорт методом " .. i .. " не до конца успешен, расстояние: " .. math.floor(finalDistance))
+                end
+            else
+                print("❌ Метод " .. i .. " не сработал")
+            end
+            wait(0.5)
+        end
+        
+        print("🔄 Повторная попытка телепортации...")
+        wait(1)
+    end
+    
+    -- Восстанавливаем исходное состояние Noclip
+    if not wasNoclipEnabled then
+        toggleNoclip()
+    end
+    
+    print("❌ Все методы телепортации не сработали")
+    return false
 end
 
 -- Функция взятия ковша
@@ -179,9 +247,13 @@ local function executeLavaCycle()
         return false
     end
     
-    -- Телепортируемся к Shapes (ИСПРАВЛЕНО - используем CFrame вместо GetModelCFrame)
+    -- Телепортируемся к Shapes
     local shapesModel = workspace.Jobs["Работник завода"].Shapes_Conveyor.Shapes
-    local shapesCFrame = shapesModel:GetBoundingBox().CFrame + Vector3.new(0, 5, 0)
+    local shapesPosition = shapesModel:GetModelCFrame()
+    if not shapesPosition then
+        shapesPosition = shapesModel:GetBoundingBox().CFrame
+    end
+    local shapesCFrame = shapesPosition + Vector3.new(0, 5, 0)
     
     print("🔄 Телепортируемся к Shapes...")
     if not smartTeleport(shapesCFrame) then
@@ -251,9 +323,13 @@ end
 
 -- ЦИКЛ 4: Загрузка в бокс
 local function executeBoxCycle()
-    -- Телепортируемся к боксу (ИСПРАВЛЕНО - используем CFrame вместо GetModelCFrame)
+    -- Телепортируемся к боксу
     local box = workspace.Jobs["Работник завода"].Box_Conveyor.Box
-    local boxCFrame = box:GetBoundingBox().CFrame + Vector3.new(0, 5, 0)
+    local boxPosition = box:GetModelCFrame()
+    if not boxPosition then
+        boxPosition = box:GetBoundingBox().CFrame
+    end
+    local boxCFrame = boxPosition + Vector3.new(0, 5, 0)
     
     print("🔄 Телепортируемся к боксу...")
     if not smartTeleport(boxCFrame) then
@@ -304,9 +380,9 @@ local function startAutoCycle()
         
         if not autoEnabled then break end
         
-        -- Телепорт к ClearGiver (ИСПРАВЛЕНО)
+        -- Телепорт к ClearGiver
         local clearGiver = workspace.Jobs["Работник завода"].ClearGiver
-        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 3, 0)
+        local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
         
         print("🔄 Телепортируемся к ClearGiver...")
         smartTeleport(clearCFrame)
@@ -353,10 +429,10 @@ local function startAutoCycle()
             wait(1)
         end
         
-        -- Телепорт к MetalGiver для следующего цикла (ИСПРАВЛЕНО)
+        -- Телепорт к MetalGiver для следующего цикла
         if not autoEnabled then break end
         local metalGiver = workspace.Jobs["Работник завода"].MetalGiver
-        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 3, 0)
+        local metalCFrame = metalGiver.CFrame + Vector3.new(0, 5, 0)
         
         print("🔄 Телепортируемся к MetalGiver для следующего цикла...")
         smartTeleport(metalCFrame)
@@ -530,7 +606,8 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
 end)
 
 print("✅ АВТОМАТИЧЕСКИЙ ЗАВОД ЗАГРУЖЕН!")
-print("🔧 Исправлены ошибки телепортации")
+print("🚀 УЛУЧШЕННАЯ ТЕЛЕПОРТАЦИЯ АКТИВИРОВАНА")
 print("📝 Инструкция:")
 print("   🚀 Нажми 'ЗАПУСТИТЬ АВТО-ЦИКЛ' для начала")
 print("   🛑 Нажми 'ОСТАНОВИТЬ ЦИКЛ' для остановки")
+print("   👻 Включи Noclip для лучшей телепортации")
