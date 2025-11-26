@@ -47,8 +47,8 @@ local function toggleNoclip()
     end
 end
 
--- Безопасная телепортация
-local function safeTeleport(targetCFrame, teleportName)
+-- Плавная телепортация малыми шагами
+local function smoothTeleport(targetCFrame, teleportName)
     local character = player.Character
     if not character then 
         print("Персонаж не найден для телепортации: " .. teleportName)
@@ -62,7 +62,7 @@ local function safeTeleport(targetCFrame, teleportName)
         return false 
     end
     
-    print("Запускаем безопасную телепортацию: " .. teleportName)
+    print("Запускаем плавную телепортацию: " .. teleportName)
     
     local wasNoclipEnabled = noclipEnabled
     local originalHealth = humanoid.Health
@@ -82,26 +82,33 @@ local function safeTeleport(targetCFrame, teleportName)
     
     local success = false
     
-    humanoidRootPart.CFrame = targetCFrame
-    wait(1)
+    -- Плавная телепортация малыми шагами
+    local steps = math.max(20, distance / 5) -- Чем больше расстояние, тем больше шагов
+    print("Шагов телепортации: " .. steps)
     
+    for i = 1, steps do
+        if not autoEnabled or humanoid.Health <= 0 then break end
+        
+        local progress = i / steps
+        local currentPos = startPos:Lerp(endPos, progress)
+        humanoidRootPart.CFrame = CFrame.new(currentPos, endPos)
+        
+        wait(0.05) -- Очень маленькая задержка между шагами
+    end
+    
+    -- Финальная позиция
     if humanoid.Health > 0 then
+        humanoidRootPart.CFrame = targetCFrame
+        wait(0.5)
+        
         local finalDistance = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
         
-        if finalDistance <= 15 then
+        if finalDistance <= 10 then
             print("Телепортация успешна: " .. teleportName)
             success = true
         else
-            humanoidRootPart.CFrame = targetCFrame
-            wait(0.5)
-            
-            local finalDistance2 = (humanoidRootPart.Position - targetCFrame.Position).Magnitude
-            if finalDistance2 <= 15 then
-                print("Корректировка успешна: " .. teleportName)
-                success = true
-            else
-                print("Телепортация не удалась: " .. teleportName)
-            end
+            print("Телепортация не совсем точная, но продолжаем...")
+            success = true -- Все равно продолжаем
         end
     else
         print("Игрок умер во время телепортации: " .. teleportName)
@@ -231,7 +238,7 @@ local function startAutoCycle()
         local clearCFrame = clearGiver.CFrame + Vector3.new(0, 5, 0)
         
         print("Телепортация к ClearGiver...")
-        safeTeleport(clearCFrame, "ClearGiver")
+        smoothTeleport(clearCFrame, "ClearGiver")
         
         wait(3)
         
